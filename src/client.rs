@@ -49,7 +49,7 @@ impl Client {
     }
 
     /// Receive the next server event.
-    /// Ping/pong keepalive is handled internally — the user never sees it.
+    /// Ping/pong keepalive is handled internally
     /// Returns `Ok(None)` on clean disconnect.
     pub async fn recv(&mut self) -> Result<Option<ServerEvent>, SyncError> {
         loop {
@@ -104,7 +104,7 @@ pub struct ClientBuilder {
 impl ClientBuilder {
     pub fn new() -> Self {
         Self {
-            max_payload: 64 * 1024,
+            max_payload: 256 * 1024,
         }
     }
 }
@@ -134,8 +134,8 @@ impl ClientBuilder {
         let (read_half, write_half) = stream.into_split();
 
         Ok(Client {
-            reader: BufReader::new(read_half),
-            writer: BufWriter::new(write_half),
+            reader: BufReader::with_capacity(64 * 1024, read_half),
+            writer: BufWriter::with_capacity(64 * 1024, write_half),
             max_payload: self.max_payload,
         })
     }

@@ -10,7 +10,7 @@ homepage = "https:/github.com/ronakgh97/ghost-sync"
 documentation = "https:/github.com/ronakgh97/ghost-sync/master/README.md"
 
 [dependencies]
-tokio = { version = "1.50.0", features = ["full", "test-util"] }
+tokio = { version = "1.50.0", features = ["full"] }
 dashmap = "6.1.0"
 anyhow = "1.0.102"
 wincode = { version = "0.4.8", features = ["derive", "uuid"] }
@@ -19,3 +19,6 @@ bytes = "1.11.1"
 colored = "3.1.1"
 dotenv = "0.15.0"
 chrono = "0.4.44"
+
+[dev-dependencies]
+tokio = { version = "1.50.0", features = ["test-util"] }

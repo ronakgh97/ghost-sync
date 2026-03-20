@@ -50,6 +50,10 @@ pub struct ServerConfig {
     /// How often the server pings clients. If no Pong arrives before the
     /// next ping tick, the client is disconnected with [`SyncError::PingTimeout`].
     pub ping_interval: Duration,
+    /// Per-client write channel capacity. Frames are dropped when the channel
+    /// is full (with `on_backpressure` hook). Higher values buffer more for
+    /// bursty games; lower values keep latency tight.
+    pub channel_capacity: usize,
 }
 
 impl Default for ServerConfig {
@@ -61,6 +65,7 @@ impl Default for ServerConfig {
             // Non-divisible defaults to avoid idle_timeout and ping_interval
             idle_timeout: Duration::from_secs(31),
             ping_interval: Duration::from_secs(13),
+            channel_capacity: 64,
         }
     }
 }

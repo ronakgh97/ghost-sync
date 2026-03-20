@@ -1,10 +1,13 @@
-use crate::types::{Result, ServerWire, SyncError};
+use bytes::Bytes;
 use dashmap::DashMap;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-/// A broadcast frame to be sent to a client.
-pub type BroadcastFrame = Vec<u8>;
+use crate::types::{Result, ServerWire, SyncError};
+
+/// A broadcast frame to be sent to a client. `Bytes` is reference-counted,
+/// so cloning for multiple recipients is an Arc bump, not a memcpy.
+pub type BroadcastFrame = Bytes;
 
 /// A single room holding connected clients.
 ///
@@ -46,19 +49,21 @@ impl Room {
     #[inline(always)]
     pub async fn broadcast(&self, sender: Uuid, msg: &ServerWire) -> Vec<Uuid> {
         let payload = match wincode::serialize(msg) {
-            Ok(p) => p,
+            Ok(p) => Bytes::from(p),
             Err(_) => return Vec::new(),
         };
-        self.broadcast_raw(sender, &payload).await
+        self.broadcast_raw(sender, payload).await
     }
 
-    /// Send raw bytes to all clients except `sender`.
+    /// Send pre-serialized bytes to all clients except `sender`.
     /// Returns the UUIDs of clients whose write channels were full (frame dropped).
+    ///
+    /// Cloning `Bytes` is an Arc pointer bump — no data copy regardless of payload size.
     #[inline(always)]
-    pub async fn broadcast_raw(&self, sender: Uuid, payload: &[u8]) -> Vec<Uuid> {
+    pub async fn broadcast_raw(&self, sender: Uuid, payload: Bytes) -> Vec<Uuid> {
         let mut dropped = Vec::new();
         for entry in self.clients.iter() {
-            if *entry.key() != sender && entry.value().try_send(payload.to_vec()).is_err() {
+            if *entry.key() != sender && entry.value().try_send(payload.clone()).is_err() {
                 dropped.push(*entry.key());
             }
         }
@@ -69,11 +74,9 @@ impl Room {
     #[inline(always)]
     pub async fn send_to(&self, id: &Uuid, msg: &ServerWire) {
         if let Some(tx) = self.clients.get(id) {
-            let payload = match wincode::serialize(msg) {
-                Ok(p) => p,
-                Err(_) => return,
-            };
-            let _ = tx.try_send(payload);
+            if let Ok(payload) = wincode::serialize(msg) {
+                let _ = tx.try_send(Bytes::from(payload));
+            }
         }
     }
 
@@ -90,7 +93,7 @@ pub struct RoomManager {
 }
 
 impl RoomManager {
-    /// Init a room with 64s pre-allocated
+    /// Init a room manager with 64 pre-allocated slots.
     pub fn new() -> Self {
         Self {
             rooms: DashMap::with_capacity(64),

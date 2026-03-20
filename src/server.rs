@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use bytes::Bytes;
 use dashmap::DashMap;
 use tokio::io::BufWriter;
 use tokio::net::{TcpListener, TcpStream};
@@ -52,7 +53,7 @@ pub struct Server {
 /// Handle to a running server.
 ///
 /// Provides runtime control: shutdown and room management.
-/// Rooms can be created and deleted at any time — new clients will see the
+/// Rooms can be created and deleted at any time, new clients will see the
 /// updated room list, and existing clients in deleted rooms get errors on
 /// their next broadcast or join attempt.
 pub struct ServerHandle {
@@ -102,18 +103,13 @@ impl Server {
     }
 
     /// Create a room. Call this before [`Server::run`].
-    ///
     /// Clients can only join rooms that have been explicitly created.
-    ///
-    /// # Errors
-    ///
     /// Returns [`SyncError::RoomAlreadyExists`] if a room with this ID exists.
     pub fn create_room(&self, id: &str) -> Result<()> {
         self.rooms.create(id)
     }
 
     /// Delete a room. Call this before [`Server::run`].
-    ///
     /// Returns `true` if the room existed.
     pub fn delete_room(&self, id: &str) -> bool {
         self.rooms.delete(id)
@@ -122,7 +118,7 @@ impl Server {
     /// Start accepting connections.
     ///
     /// Binds the TCP listener synchronously. If the bind fails, the error is
-    /// returned immediately — nothing is spawned on failure.
+    /// returned immediately
     ///
     /// On success, spawns the accept loop on the current runtime and returns
     /// a [`ServerHandle`] for shutdown and runtime action
@@ -188,14 +184,14 @@ impl Server {
         Ok(handle)
     }
 
-    #[inline(always)]
+    #[inline]
     async fn handle_connection(self: &Arc<Self>, stream: TcpStream) -> Result<()> {
         let client_id = Uuid::new_v4();
         let (read_half, write_half) = stream.into_split();
         let mut reader = tokio::io::BufReader::new(read_half);
         let mut writer = BufWriter::new(write_half);
 
-        let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
+        let (write_tx, mut write_rx) = mpsc::channel::<Bytes>(self.config.channel_capacity);
 
         // Spawn writer task
         let writer_handle = tokio::spawn(async move {
@@ -222,11 +218,12 @@ impl Server {
         result
     }
 
+    #[inline(always)]
     async fn client_loop(
         self: &Arc<Self>,
         client_id: Uuid,
         reader: &mut tokio::io::BufReader<tokio::net::tcp::OwnedReadHalf>,
-        write_tx: &mpsc::Sender<Vec<u8>>,
+        write_tx: &mpsc::Sender<Bytes>,
     ) -> Result<()> {
         let mut shutdown_rx = self.shutdown_tx.subscribe();
         let mut ping_interval = tokio::time::interval(self.config.ping_interval);
@@ -289,7 +286,7 @@ impl Server {
         self: &Arc<Self>,
         client_id: Uuid,
         msg: ClientWire,
-        write_tx: &mpsc::Sender<Vec<u8>>,
+        write_tx: &mpsc::Sender<Bytes>,
     ) -> Result<()> {
         match msg {
             ClientWire::JoinRoom { room_id } => {
@@ -375,9 +372,10 @@ impl Server {
                 };
                 let payload = wincode::serialize(&broadcast)
                     .map_err(|e| SyncError::Protocol(format!("serialize failed: {:?}", e)))?;
+                let payload = Bytes::from(payload);
 
                 if let Some(room) = self.rooms.get(&room_id) {
-                    let dropped = room.broadcast_raw(client_id, &payload).await;
+                    let dropped = room.broadcast_raw(client_id, payload).await;
                     for id in dropped {
                         self.handler.on_backpressure(id, &room_id);
                     }
@@ -392,6 +390,7 @@ impl Server {
         Ok(())
     }
 
+    #[inline]
     async fn cleanup_client(self: &Arc<Self>, client_id: Uuid, room_id: &str) {
         let notify = ServerWire::PlayerLeft { client_id };
         if let Some(room) = self.rooms.get(room_id) {
@@ -407,9 +406,9 @@ impl Server {
     }
 
     #[inline(always)]
-    async fn send_to_client(&self, client_id: Uuid, tx: &mpsc::Sender<Vec<u8>>, msg: &ServerWire) {
+    async fn send_to_client(&self, client_id: Uuid, tx: &mpsc::Sender<Bytes>, msg: &ServerWire) {
         if let Ok(payload) = wincode::serialize(msg) {
-            if tx.try_send(payload).is_err() {
+            if tx.try_send(Bytes::from(payload)).is_err() {
                 if let Some(state) = self.clients.get(&client_id) {
                     if let Some(ref room_id) = state.room_id {
                         self.handler.on_backpressure(client_id, room_id);
@@ -481,6 +480,14 @@ impl ServerBuilder {
     /// it is disconnected.
     pub fn ping_interval(mut self, d: Duration) -> Self {
         self.config.ping_interval = d;
+        self
+    }
+
+    /// Per-client write channel capacity. Frames are dropped when full
+    /// (with `on_backpressure` hook). Higher values buffer more for bursty
+    /// games; lower values keep latency tight. Default: 64.
+    pub fn channel_capacity(mut self, n: usize) -> Self {
+        self.config.channel_capacity = n;
         self
     }
 
