@@ -1,0 +1,14 @@
+[package]
+name = "ghost-sync"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.50.0", features = ["full", "test-util"] }
+dashmap = "6.1.0"
+anyhow = "1.0.102"
+wincode = { version = "0.4.8", features = ["derive", "uuid"] }
+uuid = { version = "1.22.0", features = ["v4"] }
+colored = "3.1.1"
+dotenv = "0.15.0"
+chrono = "0.4.44"
