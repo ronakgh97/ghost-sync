@@ -19,7 +19,7 @@ This will be a very simple AND opinionated game network libray not a daemon
 > I am making this for learning networking and get familiar with tokio ecosystem,
 > but I will try to make it as usable as possible
 
-Checkout: [Examples](examples) for usage cases
+Checkout: [Examples](examples) for usage cases and [Docs](docs.md) for right way to use this library
 
 ---
 
@@ -38,4 +38,5 @@ Better lib design, currently its just a mess of functions and structs, need to r
 intuitive API
 Add more examples, maybe a mini-game?
 Experimental UDP support, maybe using QUIC?
-Add tuned buffering and improve performance by lessen serialization and deserialization, where possible (Zero-copy, etc.)
+Add tuned buffering and improve performance by lessen serialization and deserialization, where possible (Zero-copy,
+etc.)
