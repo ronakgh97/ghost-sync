@@ -1,5 +1,9 @@
 Quick rant/yap
 
+[![Groudon](https://img.pokemondb.net/sprites/black-white/anim/normal/groudon.gif)](https://pokemondb.net/pokedex/groudon)
+[![Rayquaza](https://img.pokemondb.net/sprites/black-white/anim/normal/rayquaza.gif)](https://pokemondb.net/pokedex/rayquaza)
+[![Kyogre](https://img.pokemondb.net/sprites/black-white/anim/normal/kyogre.gif)](https://pokemondb.net/pokedex/kyogre)
+
 Networking in game is super frustrating, even a simple relay server takes lots of time.
 Forgot the actual game, now you are stuck with networking code chaos, forever and eternally, and you will never finish
 your game, and you will never be satisfied, and you will never be proud of your work, and you will never be able to show
