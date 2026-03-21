@@ -272,6 +272,8 @@ impl Server {
         let writer_handle = tokio::spawn(async move {
             while let Some(frame) = write_rx.recv().await {
                 if let Err(e) = protocol::write_frame_raw(&mut writer, &frame).await {
+                    #[allow(clippy::needless_ifs)]
+                    if !e.is_connection_closed() {}
                     warn!("write error: {e}");
                     break;
                 }

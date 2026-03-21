@@ -24,6 +24,7 @@ pub enum ServerWire {
     Broadcast { sender_id: Uuid, data: Vec<u8> },
 }
 
+#[allow(rustdoc::private_intra_doc_links)]
 /// Client-facing event (clean API over [`ServerWire`])
 /// Events the client receives from the server.
 pub enum ServerEvent {

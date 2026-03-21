@@ -22,3 +22,4 @@ chrono = "0.4.44"
 
 [dev-dependencies]
 tokio = { version = "1.50.0", features = ["test-util"] }
+rand = "0.10.0"

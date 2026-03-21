@@ -3,6 +3,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use ghost_sync::{Client, Server, ServerEvent, SyncError};
+use rand::rngs::StdRng;
+use rand::{RngExt, SeedableRng};
+use tokio::sync::{mpsc, watch};
 
 /// Helper: start a server on a random port with a "test" room.
 /// Returns (ServerHandle, port).
@@ -290,7 +293,7 @@ async fn ping_timeout_disconnects() {
         tokio::task::yield_now().await;
     }
 
-    // Client should still be connected and  can send a message
+    // Client should still be connected and can send a message
     client.broadcast(b"still alive").await.unwrap();
 
     tokio::time::resume();
@@ -403,11 +406,9 @@ async fn runtime_room_management() {
     server.pre_create_room("lobby").unwrap();
     let handle = server.run().await.unwrap();
 
-    // Room exists
     assert!(handle.room_exists("lobby"));
     assert_eq!(handle.room_count(), 1);
 
-    // Create room at runtime
     handle.create_room("match-1").unwrap();
     assert!(handle.room_exists("match-1"));
     assert_eq!(handle.room_count(), 2);
@@ -433,4 +434,161 @@ async fn runtime_room_management() {
 
     // Delete non-existent room returns false
     assert!(!handle.delete_room("nonexistent"));
+}
+
+const LOAD_CLIENTS: usize = 256;
+const LOAD_DURATION: Duration = Duration::from_secs(8);
+
+#[inline(always)]
+fn get_random_bytes(size: u32) -> Vec<u8> {
+    let mut rng = rand::rng();
+    (0..size).map(|_| rng.random::<u8>()).collect()
+}
+
+async fn drain_startup_messages(client: &mut Client) -> Result<(), SyncError> {
+    loop {
+        match tokio::time::timeout(Duration::from_millis(20), client.recv()).await {
+            Ok(Ok(Some(_))) => continue,
+            Ok(Ok(None)) => return Err(SyncError::ConnectionClosed),
+            Ok(Err(e)) => return Err(e),
+            Err(_) => return Ok(()),
+        }
+    }
+}
+
+async fn load_worker(
+    mut client: Client,
+    mut stop_rx: watch::Receiver<bool>,
+    fail_tx: mpsc::UnboundedSender<String>,
+    worker_id: usize,
+) {
+    let mut rng = StdRng::seed_from_u64(0x5EED_0000 ^ worker_id as u64);
+    let mut send_tick =
+        tokio::time::interval(Duration::from_millis(25 + (worker_id as u64 % 5) * 5));
+    send_tick.tick().await;
+
+    loop {
+        tokio::select! {
+            biased;
+            // Drain shutdown messages first, then cleanly leave and drain incoming messages to avoid spurious errors
+            _ = stop_rx.changed() => {
+                let _ = client.leave().await;
+
+                let drain_deadline = tokio::time::sleep(Duration::from_millis(500));
+                tokio::pin!(drain_deadline);
+                loop {
+                    tokio::select! {
+                        _ = &mut drain_deadline => break,
+                        recv_result = tokio::time::timeout(Duration::from_millis(25), client.recv()) => {
+                            match recv_result {
+                                Ok(Ok(Some(_))) => {}
+                                Ok(Ok(None)) => break,
+                                Ok(Err(e)) if e.is_connection_closed() => break,
+                                Ok(Err(_)) => break,
+                                Err(_) => {}
+                            }
+                        }
+                    }
+                }
+                break;
+            },
+            // Send out random garbage broadcasts at intervals to simulate load
+            _ = send_tick.tick() => {
+                let size = rng.random_range(64..=512);
+                let payload = get_random_bytes(size as u32);
+                if let Err(e) = client.broadcast(&payload).await {
+                    if *stop_rx.borrow() || e.is_connection_closed() {
+                        break;
+                    }
+                    let _ = fail_tx.send(format!("worker {worker_id} broadcast failed: {e}"));
+                    return;
+                }
+            }
+            // Check for incoming messages to detect disconnects or other errors. We don't expect any messages, so time out immediately if there are any issues.
+            recv_result = tokio::time::timeout(Duration::from_millis(1), client.recv()) => {
+                match recv_result {
+                    Ok(Ok(Some(_event))) => {}
+                    Ok(Ok(None)) => {
+                        if *stop_rx.borrow() {
+                            break;
+                        }
+                        let _ = fail_tx.send(format!("worker {worker_id} disconnected unexpectedly"));
+                        return;
+                    }
+                    Ok(Err(e)) => {
+                        if *stop_rx.borrow() || e.is_connection_closed() {
+                            break;
+                        }
+                        let _ = fail_tx.send(format!("worker {worker_id} recv failed: {e}"));
+                        return;
+                    }
+                    Err(_) => {}
+                }
+            }
+        }
+    }
+}
+
+/// NOTE: This test might have race condition due to network dependencies, but it should be good enough to catch major issues under load.
+#[tokio::test(flavor = "multi_thread", worker_threads = 16)]
+async fn server_load_test() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+
+    let server = Server::builder()
+        .bind(format!("127.0.0.1:{port}"))
+        .max_clients(LOAD_CLIENTS)
+        .max_payload(1024)
+        .idle_timeout(Duration::from_secs(60))
+        .ping_interval(Duration::from_secs(30))
+        .channel_capacity(256)
+        .build();
+
+    server.pre_create_room("load_test").unwrap();
+    let handle = server.run().await.unwrap();
+
+    let mut clients = Vec::with_capacity(LOAD_CLIENTS);
+    for _ in 0..LOAD_CLIENTS {
+        let mut client = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
+        client.join("load_test").await.unwrap();
+        let _ = client.recv().await.unwrap();
+        clients.push(client);
+    }
+
+    tokio::time::sleep(Duration::from_millis(250)).await;
+
+    for client in &mut clients {
+        drain_startup_messages(client).await.unwrap();
+    }
+
+    let (stop_tx, stop_rx) = watch::channel(false);
+    let (fail_tx, mut fail_rx) = mpsc::unbounded_channel::<String>();
+    let mut tasks = Vec::with_capacity(LOAD_CLIENTS);
+
+    for (worker_id, client) in clients.into_iter().enumerate() {
+        tasks.push(tokio::spawn(load_worker(
+            client,
+            stop_rx.clone(),
+            fail_tx.clone(),
+            worker_id,
+        )));
+    }
+
+    let failure = tokio::select! {
+        _ = tokio::time::sleep(LOAD_DURATION) => None,
+        maybe_failure = fail_rx.recv() => maybe_failure,
+    };
+
+    let _ = stop_tx.send(true);
+
+    for task in tasks {
+        task.await.unwrap();
+    }
+
+    handle.shutdown().await;
+
+    if let Some(failure) = failure {
+        panic!("load test failed: {failure}");
+    }
 }
