@@ -36,11 +36,13 @@ impl Client {
     }
 
     /// Send a ping (keep-alive).
+    #[inline(always)]
     pub async fn ping(&mut self) -> Result<(), SyncError> {
         self.send(&ClientWire::Ping).await
     }
 
     /// Broadcast raw bytes to all peers in the current room.
+    #[inline]
     pub async fn broadcast(&mut self, data: &[u8]) -> Result<(), SyncError> {
         let msg = ClientWire::Broadcast {
             data: data.to_vec(),
@@ -51,6 +53,7 @@ impl Client {
     /// Receive the next server event.
     /// Ping/pong keepalive is handled internally
     /// Returns `Ok(None)` on clean disconnect.
+    #[inline]
     pub async fn recv(&mut self) -> Result<Option<ServerEvent>, SyncError> {
         loop {
             let payload = match protocol::read_frame_raw(&mut self.reader, self.max_payload).await {

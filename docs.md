@@ -191,19 +191,62 @@ impl ServerHandler for StrictRooms {
   that room will fail.
 - Rooms can hold metadata via `set_room_meta()` / `get_room_meta()`.
 
----
+## Keepalive and liveness
 
-## Keepalive
+There are two independent liveness checks running simultaneously.
 
-Keepalive is server-driven:
+### 1) Read inactivity timeout (`idle_timeout`)
 
-1. Server sends `Ping` at `ping_interval`.
-2. Client auto-responds `Pong` inside `recv()`.
-3. If no pong before the next ping tick, server disconnects that client.
-4. Separate `idle_timeout` disconnects clients that send nothing.
+If the server does not receive **any frame** from a client for longer than
+`idle_timeout`, the server disconnects that client with `SyncError::IdleTimeout`.
 
-**Critical:** clients must continuously poll `recv()`. If the client stops calling `recv()`,
-it stops responding to pings and gets disconnected.
+A Pong response to a Ping counts as activity. So if the client is driving
+`recv()` and responding to server pings, this timer resets on every pong
+the client sends.
+
+### 2) Ping-based liveness (`ping_interval`)
+
+Server sends a `Ping` to every client every `ping_interval`. The client
+auto-responds with `Pong` inside `recv()`. If the server does not receive
+a `Pong` before the **next** ping tick, it disconnects that client with
+`SyncError::PingTimeout`.
+
+The effective pong deadline is one full `ping_interval`.
+
+### Why two checks?
+
+They catch different failure modes:
+
+- `idle_timeout` catches clients that go completely silent (network drop, client crash).
+- `ping_interval` catches clients that are still connected but not responding to
+  protocol-level pings (e.g., client stopped calling `recv()`).
+
+### Critical: client must drive `recv()`
+
+The client auto-responds to pings **inside `recv()`**. If the client stops calling
+`recv()`:
+- it stops sending Pong responses,
+- server sees no activity for `idle_timeout` seconds,
+- server disconnects with `IdleTimeout` (or `PingTimeout`, whichever fires first).
+
+**You must keep calling `recv()` in a loop.** Even if you have no messages to send. (or use explicit `ping()` method in the future)
+
+### Disconnect reasons summary
+
+| Error              | Cause                                                     |
+|--------------------|-----------------------------------------------------------|
+| `IdleTimeout`      | No frame received from client for `idle_timeout` duration |
+| `PingTimeout`      | Client did not send Pong before next ping tick            |
+| `ConnectionClosed` | Server shutdown, or client closed connection cleanly      |
+| `ConnectionReset`  | Client disappeared (network drop, process killed)         |
+| `PayloadTooLarge`  | Client sent a frame larger than `max_payload`             |
+| `Protocol`         | Deserialization failure (malformed frame)                 |
+
+### How `recv()` handles this internally
+
+`recv()` blocks until a server event arrives. While blocking, it automatically
+responds to server `Ping` with `Pong` and swallows `Pong` responses. The caller
+never sees ping/pong traffic — it is transparent.
 
 ---
 
@@ -243,18 +286,20 @@ Tuning guidance:
 
 Set via `ServerBuilder`:
 
-| Option                | Default          | Description                                |
-|-----------------------|------------------|--------------------------------------------|
-| `bind(addr)`          | `"0.0.0.0:7777"` | TCP listen address                         |
-| `max_clients(n)`      | `1024`           | Max concurrent connections                 |
-| `max_payload(n)`      | `64 * 1024`      | Max frame size in bytes                    |
-| `idle_timeout(d)`     | `31s`            | Disconnect clients silent longer than this |
-| `ping_interval(d)`    | `13s`            | How often server pings clients             |
-| `channel_capacity(n)` | `64`             | Per-client write queue size                |
-| `handler(h)`          | `NoopHandler`    | Custom `ServerHandler` implementation      |
+| Option                | Default          | Description                                                         |
+|-----------------------|------------------|---------------------------------------------------------------------|
+| `bind(addr)`          | `"0.0.0.0:7777"` | TCP listen address                                                  |
+| `max_clients(n)`      | `1024`           | Max concurrent connections                                          |
+| `max_payload(n)`      | `64 * 1024`      | Max frame size in bytes                                             |
+| `idle_timeout(d)`     | `31s`            | Max time without receiving any frame from client                    |
+| `ping_interval(d)`    | `13s`            | Ping cadence; also the pong deadline (miss = disconnect)            |
+| `channel_capacity(n)` | `64`             | Per-client write queue size; frames dropped when full               |
+| `handler(h)`          | `NoopHandler`    | Custom `ServerHandler` implementation                               |
 
-Defaults for `idle_timeout` and `ping_interval` are intentionally non-divisible
-to avoid race conditions between the two timers.
+- `idle_timeout` and `ping_interval` are independent. A client that stops
+  calling `recv()` will eventually fail one or both checks.
+- Defaults are intentionally non-divisible (`31s` / `13s`) to avoid the two
+  timers always firing at the same moment.
 
 ---
 

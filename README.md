@@ -21,16 +21,14 @@ This will be a very simple AND opinionated game network libray not a daemon
 
 Checkout: [Examples](examples) for usage cases and [Docs](docs.md) for right way to use this library
 
----
 
-Usage (I dont like release cycles and versioning, so just use local)
+Usage (I don't like release cycles and versioning, so just use local)
 
 ```toml
 [dependencies]
 game-server = { git = "https://github.com/ronakgh97/ghost-sync" }
 ```
 
----
 
 TODO
 

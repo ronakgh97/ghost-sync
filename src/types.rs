@@ -46,10 +46,18 @@ pub struct ServerConfig {
     pub bind_addr: String,
     pub max_clients: usize,
     pub max_payload: usize,
-    /// Disconnect clients that send nothing for this duration.
+    /// Max time without receiving any frame from a client.
+    /// This is a raw read inactivity timeout: if the server gets nothing for
+    /// this duration, the client is disconnected with [`SyncError::IdleTimeout`].
+    ///
+    /// Pong responses to server pings count as activity and reset this timer.
+    ///
+    /// See also: [`ping_interval`](Self::ping_interval) for protocol-level
+    /// liveness (server sends Ping, expects Pong before next tick).
     pub idle_timeout: Duration,
-    /// How often the server pings clients. If no Pong arrives before the
-    /// next ping tick, the client is disconnected with [`SyncError::PingTimeout`].
+    /// How often the server sends Ping to clients. The pong deadline is one
+    /// full `ping_interval` — if no Pong arrives before the next tick, the
+    /// client is disconnected with [`SyncError::PingTimeout`].
     pub ping_interval: Duration,
     /// Per-client write channel capacity. Frames are dropped when the channel
     /// is full (with `on_backpressure` hook). Higher values buffer more for

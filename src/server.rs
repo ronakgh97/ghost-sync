@@ -194,7 +194,7 @@ impl Server {
         let listener = TcpListener::bind(&self.config.bind_addr).await?;
         info!("listening on {}", self.config.bind_addr);
 
-        let (shutdown_tx, _) = broadcast::channel::<()>(1);
+        let (shutdown_tx, _) = broadcast::channel::<()>(2);
         let handle = ServerHandle {
             shutdown_tx: shutdown_tx.clone(),
             rooms: self.rooms.clone(),
@@ -323,7 +323,9 @@ impl Server {
 
         loop {
             tokio::select! {
-                // Read incoming frame with idle timeout
+                // Read incoming frame with inactivity timeout
+                // If no frame (any message) arrives within idle_timeout, disconnect.
+                // Pong responses reset this timer.
                 result = tokio::time::timeout(
                     self.config.idle_timeout,
                     protocol::read_frame_raw(reader, self.config.max_payload),
@@ -346,15 +348,18 @@ impl Server {
                         {
                             return Ok(()); // clean disconnect
                         }
+                        // Any other error from read_frame_raw is a protocol or IO error
                         Ok(Err(e)) => return Err(e),
+                        // Timeout means the client was idle for too long
                         Err(_timeout) => return Err(SyncError::IdleTimeout),
                     }
                 }
 
                 // Ping tick — server sends Ping to client
+                // Pong deadline = next tick. If still awaiting_pong, disconnect.
                 _ = ping_interval.tick() => {
                     if awaiting_pong {
-                        // Client didn't respond to last Ping in time
+                        // Client didn't respond with Pong before this tick
                         return Err(SyncError::PingTimeout);
                     }
                     let ping = ServerWire::Ping;
@@ -568,14 +573,17 @@ impl ServerBuilder {
     }
 
     /// Disconnect clients that send nothing for this duration.
+    /// Any frame (including Pong) resets this timer. This is separate from
+    /// ping-based liveness — see [`ping_interval`](Self::ping_interval).
     pub fn idle_timeout(mut self, d: Duration) -> Self {
         self.config.idle_timeout = d;
         self
     }
 
-    /// How often the server pings clients to check they're alive.
-    /// If the client doesn't respond with a Pong before the next ping tick,
-    /// it is disconnected.
+    /// How often the server pings clients. Pong deadline is one full
+    /// `ping_interval` — if no Pong arrives before the next tick, the
+    /// client is disconnected. This is separate from read inactivity —
+    /// see [`idle_timeout`](Self::idle_timeout).
     pub fn ping_interval(mut self, d: Duration) -> Self {
         self.config.ping_interval = d;
         self
