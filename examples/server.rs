@@ -9,9 +9,11 @@ async fn main() -> anyhow::Result<()> {
         .channel_capacity(16)
         .build();
 
-    server.create_room("chatroom")?;
+    // server.pre_create_room("chatroom")?;
 
     let handle = server.run().await?;
+
+    handle.create_room("chatroom")?;
 
     println!("Press Ctrl+C to stop...");
     tokio::signal::ctrl_c().await?;

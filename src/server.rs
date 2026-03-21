@@ -25,8 +25,8 @@ struct ClientState {
 /// A broadcast relay game server.
 ///
 /// Create a server with [`Server::builder`], optionally create rooms with
-/// [`Server::create_room`], then call [`Server::run`] to start accepting
-/// connections.
+/// [`Server::pre_create_room`], then call [`Server::run`] to start accepting connections
+/// or use [`ServerHandle::create_room`] to perform at runtime, you create a daemon wrapper this way :)
 ///
 /// ```no_run
 /// # async fn example() -> std::io::Result<()> {
@@ -36,8 +36,8 @@ struct ClientState {
 ///     .bind("0.0.0.0:7777")
 ///     .build();
 ///
-/// // Spin up the server with an initial rooms
-/// server.create_room("standoff").unwrap();
+/// // Spin up the server with an initial rooms (This is not standard, but you have freedom)
+/// server.pre_create_room("standoff").unwrap();
 ///
 /// let handle = server.run().await?;
 /// // Rooms can also be managed at runtime via the handle:
@@ -75,7 +75,8 @@ impl ServerHandle {
     }
 
     /// Create a room at runtime. Fails if the room already exists.
-    pub fn create_room_runtime(&self, id: &str) -> Result<()> {
+    #[inline(always)]
+    pub fn create_room(&self, id: &str) -> Result<()> {
         self.rooms.create(id)?;
         self.handler.on_room_create(id);
         Ok(())
@@ -85,7 +86,8 @@ impl ServerHandle {
     ///
     /// Soft delete: connected clients are not kicked, but their next
     /// broadcast or join will fail with a [`SyncError::RoomNotFound`].
-    pub fn delete_room_runtime(&self, id: &str) -> bool {
+    #[inline(always)]
+    pub fn delete_room(&self, id: &str) -> bool {
         let existed = self.rooms.delete(id);
         if existed {
             self.handler.on_room_delete(id);
@@ -160,18 +162,20 @@ impl Server {
         ServerBuilder::new()
     }
 
-    /// Create a room. Call this before [`Server::run`].
+    /// Create a room. Call this before [`Server::run`]. (pre-run)
     /// Clients can only join rooms that have been explicitly created.
     /// Returns [`SyncError::RoomAlreadyExists`] if a room with this ID exists.
-    pub fn create_room(&self, id: &str) -> Result<()> {
+    #[deprecated(note = "Use ServerHandle::create_room instead, at runtime")]
+    pub fn pre_create_room(&self, id: &str) -> Result<()> {
         self.rooms.create(id)?;
         self.handler.on_room_create(id);
         Ok(())
     }
 
-    /// Delete a room. Call this before [`Server::run`].
+    /// Delete a room. Call this before [`Server::run`]. (pre-run)
     /// Returns `true` if the room existed.
-    pub fn delete_room(&self, id: &str) -> bool {
+    #[deprecated(note = "Use ServerHandle::delete_room instead, at runtime")]
+    pub fn pre_delete_room(&self, id: &str) -> bool {
         let existed = self.rooms.delete(id);
         if existed {
             self.handler.on_room_delete(id);

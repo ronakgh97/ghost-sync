@@ -1,9 +1,11 @@
 use colored::Colorize;
 use ghost_sync::{Client, ServerEvent};
 use std::env;
+use std::net::SocketAddr;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-/// Very basic chatroom client. Connects to the server, joins a room, and broadcasts lines from stdin to all peers.
+/// Very basic chatroom client test
+/// Connects to the server, joins a room, and broadcasts lines from stdin to all peers.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let name = env::args().nth(1).unwrap_or_else(|| {
@@ -14,6 +16,13 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("Usage: chatroom <name> <addr>");
         std::process::exit(1);
     });
+
+    if let Ok(addr) = addr.parse::<SocketAddr>() {
+        if addr.ip().is_unspecified() {
+            eprintln!("Refusing to connect to {}", addr);
+            std::process::exit(1);
+        }
+    }
 
     let mut client = Client::connect(addr.as_str()).await?;
     client.join("chatroom").await?;
