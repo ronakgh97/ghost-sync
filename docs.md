@@ -195,7 +195,7 @@ impl ServerHandler for StrictRooms {
 
 There are two independent liveness checks running simultaneously.
 
-### 1) Read inactivity timeout (`idle_timeout`)
+### Read inactivity timeout (`idle_timeout`)
 
 If the server does not receive **any frame** from a client for longer than
 `idle_timeout`, the server disconnects that client with `SyncError::IdleTimeout`.
@@ -204,7 +204,7 @@ A Pong response to a Ping counts as activity. So if the client is driving
 `recv()` and responding to server pings, this timer resets on every pong
 the client sends.
 
-### 2) Ping-based liveness (`ping_interval`)
+### Ping-based liveness (`ping_interval`)
 
 Server sends a `Ping` to every client every `ping_interval`. The client
 auto-responds with `Pong` inside `recv()`. If the server does not receive

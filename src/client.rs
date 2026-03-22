@@ -134,6 +134,7 @@ impl ClientBuilder {
                 SyncError::Io(e)
             }
         })?;
+        stream.set_nodelay(true).ok(); // Ignore error, not critical
         let (read_half, write_half) = stream.into_split();
 
         Ok(Client {

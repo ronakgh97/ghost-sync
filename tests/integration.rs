@@ -436,8 +436,8 @@ async fn runtime_room_management() {
     assert!(!handle.delete_room("nonexistent"));
 }
 
-const LOAD_CLIENTS: usize = 256;
-const LOAD_DURATION: Duration = Duration::from_secs(8);
+const LOAD_CLIENTS: usize = 512;
+const LOAD_DURATION: Duration = Duration::from_secs(12);
 
 #[inline(always)]
 fn get_random_bytes(size: u32) -> Vec<u8> {

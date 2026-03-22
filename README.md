@@ -4,6 +4,10 @@
 [![Rayquaza](https://img.pokemondb.net/sprites/black-white/anim/normal/rayquaza.gif)](https://pokemondb.net/pokedex/rayquaza)
 [![Kyogre](https://img.pokemondb.net/sprites/black-white/anim/normal/kyogre.gif)](https://pokemondb.net/pokedex/kyogre)
 
+[![Zekrom](https://img.pokemondb.net/sprites/black-white/anim/normal/zekrom.gif)](https://pokemondb.net/pokedex/zekrom)
+[![Reshiram](https://img.pokemondb.net/sprites/black-white/anim/normal/reshiram.gif)](https://pokemondb.net/pokedex/reshiram)
+[![Kyurem](https://img.pokemondb.net/sprites/black-white/anim/normal/kyurem.gif)](https://pokemondb.net/pokedex/kyurem)
+
 Networking in game is super frustrating, even a simple relay server takes lots of time.
 Forgot the actual game, now you are stuck with networking code chaos, forever and eternally, and you will never finish
 your game, and you will never be satisfied, and you will never be proud of your work, and you will never be able to show
@@ -21,14 +25,12 @@ This will be a very simple AND opinionated game network libray not a daemon
 
 Checkout: [Examples](examples) for usage cases and [Docs](docs.md) for right way to use this library
 
-
 Usage (I don't like release cycles and versioning, so just use local)
 
 ```toml
 [dependencies]
 game-server = { git = "https://github.com/ronakgh97/ghost-sync" }
 ```
-
 
 TODO
 

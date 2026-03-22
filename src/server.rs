@@ -215,6 +215,7 @@ impl Server {
                     result = listener.accept() => {
                         match result {
                             Ok((stream, addr)) => {
+                                stream.set_nodelay(true).ok();
                                 if !server.handler.on_connect(addr) {
                                     warn!("connection rejected by handler: {addr}");
                                     drop(stream);
@@ -245,7 +246,8 @@ impl Server {
                         }
                     }
                     _ = shutdown_rx.recv() => {
-                        info!("shutting down");
+                        info!("Shutting server down");
+                        server.handler.on_shutdown();
                         break;
                     }
                 }

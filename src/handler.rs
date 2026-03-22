@@ -39,6 +39,12 @@ pub trait ServerHandler: Send + Sync + 'static {
     /// Called when a client leaves a room (or disconnects).
     fn on_leave(&self, _client_id: Uuid, _room_id: &str) {}
 
+    /// Called after a room is created (including via [`ServerHandle::create_room_runtime`](crate::ServerHandle::create_room)).
+    fn on_room_create(&self, _room_id: &str) {}
+
+    /// Called after a room is deleted.
+    fn on_room_delete(&self, _room_id: &str) {}
+
     /// Called when a broadcast message is relayed.
     /// client_id is the sender, and the message has already been relayed to all peers.
     fn on_broadcast(&self, _client_id: Uuid, _room_id: &str, _data: &[u8]) {}
@@ -47,11 +53,9 @@ pub trait ServerHandler: Send + Sync + 'static {
     /// The affected clients are identified by their UUIDs.
     fn on_backpressure(&self, _client_id: Uuid, _room_id: &str) {}
 
-    /// Called after a room is created (including via [`ServerHandle::create_room_runtime`](crate::ServerHandle::create_room)).
-    fn on_room_create(&self, _room_id: &str) {}
-
-    /// Called after a room is deleted.
-    fn on_room_delete(&self, _room_id: &str) {}
+    /// Called when server is shutdown via ctrl-c (shutdown signals)
+    /// Can be used as a graceful shutdown signal for any background tasks or post-shutdown cleanup or jobs
+    fn on_shutdown(&self) {}
 }
 
 /// Default no-op handler. Accepts all connections, ignores all events.
