@@ -1,0 +1,6 @@
+[project]
+name = "ghost-sync"
+version = "0.1.0"
+description = "Fuck python"
+requires-python = ">=3.14"
+dependencies = []

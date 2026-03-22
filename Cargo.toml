@@ -9,6 +9,10 @@ repository = "https:/github.com/ronakgh97/ghost-sync"
 homepage = "https:/github.com/ronakgh97/ghost-sync"
 documentation = "https:/github.com/ronakgh97/ghost-sync/master/README.md"
 
+[[example]]
+name = "ghost-sync-daemon"
+path = "examples/daemon.rs"
+
 [dependencies]
 tokio = { version = "1.50.0", features = ["full"] }
 dashmap = "6.1.0"
