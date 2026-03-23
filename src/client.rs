@@ -138,8 +138,8 @@ impl ClientBuilder {
         let (read_half, write_half) = stream.into_split();
 
         Ok(Client {
-            reader: BufReader::with_capacity(64 * 1024, read_half),
-            writer: BufWriter::with_capacity(64 * 1024, write_half),
+            reader: BufReader::with_capacity(128 * 1024, read_half),
+            writer: BufWriter::with_capacity(128 * 1024, write_half),
             max_payload: self.max_payload,
         })
     }

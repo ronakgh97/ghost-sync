@@ -266,9 +266,9 @@ async fn main() -> Result<()> {
         .bind("0.0.0.0:7777")
         .max_clients(1024)
         .max_payload(256 * 1024)
-        .idle_timeout(Duration::from_secs(31))
-        .ping_interval(Duration::from_secs(12))
-        .channel_capacity(1024 * 1024 * 64)
+        .idle_timeout(Duration::from_secs(25))
+        .ping_interval(Duration::from_secs(15))
+        .channel_capacity(1024 * 1024 * 512)
         .handler(DaemonHandler::new(daemon.clone()))
         .build();
 
@@ -278,6 +278,8 @@ async fn main() -> Result<()> {
     for i in 1..=128 {
         server_handle.create_room(&format!("room-{}", i))?;
     }
+
+    server_handle.create_room("test-room")?;
 
     let ctrl_listener = TcpListener::bind("0.0.0.0:8888").await?;
     info!("Control server listening on 0.0.0.0:8888");

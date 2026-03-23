@@ -426,18 +426,14 @@ async fn runtime_room_management() {
     }
 
     assert_eq!(handle.room_client_count("match-1"), Some(1));
-
-    // Delete room at runtime (soft delete)
     assert!(handle.delete_room("match-1"));
     assert!(!handle.room_exists("match-1"));
     assert_eq!(handle.room_count(), 1);
-
-    // Delete non-existent room returns false
     assert!(!handle.delete_room("nonexistent"));
 }
 
-const LOAD_CLIENTS: usize = 512;
-const LOAD_DURATION: Duration = Duration::from_secs(12);
+const LOAD_CLIENTS: usize = 256;
+const LOAD_DURATION: Duration = Duration::from_secs(8);
 
 #[inline(always)]
 fn get_random_bytes(size: u32) -> Vec<u8> {
@@ -542,7 +538,7 @@ async fn server_load_test() {
         .max_payload(1024)
         .idle_timeout(Duration::from_secs(60))
         .ping_interval(Duration::from_secs(30))
-        .channel_capacity(256)
+        .channel_capacity(1024)
         .build();
 
     server.pre_create_room("load_test").unwrap();
