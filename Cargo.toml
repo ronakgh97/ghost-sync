@@ -18,7 +18,7 @@ tokio = { version = "1.50.0", features = ["full"] }
 dashmap = "6.1.0"
 anyhow = "1.0.102"
 wincode = { version = "0.4.8", features = ["derive", "uuid"] }
-uuid = { version = "1.22.0", features = ["v4"] }
+uuid = { version = "1.22.0", features = ["v4", "serde"] }
 bytes = "1.11.1"
 colored = "3.1.1"
 dotenv = "0.15.0"
@@ -26,4 +26,5 @@ chrono = "0.4.44"
 
 [dev-dependencies]
 tokio = { version = "1.50.0", features = ["test-util"] }
+macroquad = "0.4.14"
 rand = "0.10.0"

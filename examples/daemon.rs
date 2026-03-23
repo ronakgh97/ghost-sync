@@ -57,19 +57,19 @@ impl ServerHandler for DaemonHandler {
         info!("Client {} left room '{}'", client_id, room_id);
     }
 
-    fn on_backpressure(&self, client_id: Uuid, room_id: &str) {
-        warn!(
-            "Backpressure: Client {} in room '{}' has a full write channel, frame dropped",
-            client_id, room_id
-        );
-    }
-
     fn on_room_create(&self, room_id: &str) {
         info!("Room created: '{}'", room_id);
     }
 
     fn on_room_delete(&self, room_id: &str) {
         info!("Room deleted: '{}'", room_id);
+    }
+
+    fn on_backpressure(&self, client_id: Uuid, room_id: &str) {
+        warn!(
+            "Backpressure: Client {} in room '{}' has a full write channel, frame dropped",
+            client_id, room_id
+        );
     }
 }
 
@@ -264,11 +264,11 @@ async fn main() -> Result<()> {
 
     let tcp_server = Server::builder()
         .bind("0.0.0.0:7777")
-        .max_clients(1000)
-        .max_payload(64 * 1024)
-        .idle_timeout(Duration::from_secs(30))
-        .ping_interval(Duration::from_secs(10))
-        .channel_capacity(128)
+        .max_clients(1024)
+        .max_payload(256 * 1024)
+        .idle_timeout(Duration::from_secs(31))
+        .ping_interval(Duration::from_secs(12))
+        .channel_capacity(1024 * 1024 * 64)
         .handler(DaemonHandler::new(daemon.clone()))
         .build();
 
