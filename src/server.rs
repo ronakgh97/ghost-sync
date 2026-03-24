@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use dashmap::DashMap;
-use tokio::io::BufWriter;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc};
 use uuid::Uuid;
@@ -120,6 +119,22 @@ impl ServerHandle {
         self.rooms.get(id).map(|r| r.len())
     }
 
+    /// Get the write channel queue length for a specific client in a room.
+    ///
+    /// Returns `None` if the room doesn't exist or the client is not in it.
+    /// Higher values indicate the client's writer task is falling behind.
+    pub fn get_client_channel_len(&self, room_id: &str, client_id: &Uuid) -> Option<usize> {
+        self.rooms.get(room_id)?.channel_len(client_id)
+    }
+
+    /// Get all clients' write channel queue lengths in a room.
+    ///
+    /// Returns `None` if the room doesn't exist.
+    /// Each entry is `(uuid, channel_len)`. Useful for monitoring backpressure.
+    pub fn get_room_channel_lens(&self, room_id: &str) -> Option<Vec<(Uuid, usize)>> {
+        self.rooms.get(room_id).map(|r| r.all_channel_lens())
+    }
+
     /// Get a metadata value from a room.
     pub fn get_room_meta(&self, room_id: &str, key: &str) -> Option<String> {
         self.rooms.get(room_id)?.get_meta(key)
@@ -194,7 +209,7 @@ impl Server {
         let listener = TcpListener::bind(&self.config.bind_addr).await?;
         info!("listening on {}", self.config.bind_addr);
 
-        let (shutdown_tx, _) = broadcast::channel::<()>(2);
+        let (shutdown_tx, _) = broadcast::channel::<()>(4);
         let handle = ServerHandle {
             shutdown_tx: shutdown_tx.clone(),
             rooms: self.rooms.clone(),
@@ -264,10 +279,13 @@ impl Server {
         addr: SocketAddr,
     ) -> Result<()> {
         let client_id = Uuid::new_v4();
+        stream.set_nodelay(true).ok();
         let (read_half, write_half) = stream.into_split();
-        let mut reader = tokio::io::BufReader::new(read_half);
-        let mut writer = BufWriter::new(write_half);
+        let mut reader = tokio::io::BufReader::with_capacity(32 * 1024, read_half);
+        let mut writer = tokio::io::BufWriter::with_capacity(32 * 1024, write_half);
 
+        // This is the main bottleneck for backpressure handling. Each client has a dedicated writer task
+        // that receives frames to send via this channel. If the channel is full, we know the client is falling behind and can drop frames or disconnect as needed.
         let (write_tx, mut write_rx) = mpsc::channel::<Bytes>(self.config.channel_capacity);
 
         // Spawn writer task

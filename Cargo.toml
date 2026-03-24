@@ -13,6 +13,20 @@ documentation = "https:/github.com/ronakgh97/ghost-sync/master/README.md"
 name = "ghost-sync-daemon"
 path = "examples/daemon.rs"
 
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+incremental = false
+debug = false
+
+[profile.dev]
+opt-level = 1
+debug = true
+incremental = true
+
 [dependencies]
 tokio = { version = "1.50.0", features = ["full"] }
 dashmap = "6.1.0"

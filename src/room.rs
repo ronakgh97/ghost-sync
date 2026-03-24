@@ -54,6 +54,32 @@ impl Room {
         self.clients.len()
     }
 
+    /// Get the write channel queue length for a specific client.
+    ///
+    /// Returns `None` if the client is not in this room.
+    /// Higher values indicate the client's writer task is falling behind.
+    #[inline(always)]
+    pub fn channel_len(&self, id: &Uuid) -> Option<usize> {
+        self.clients
+            .get(id)
+            .map(|tx| tx.max_capacity() - tx.capacity())
+    }
+
+    /// Get all clients' write channel queue lengths.
+    ///
+    /// Returns `(uuid, channel_len)` pairs. Useful for monitoring
+    /// backpressure and identifying slow clients.
+    #[inline(always)]
+    pub fn all_channel_lens(&self) -> Vec<(Uuid, usize)> {
+        self.clients
+            .iter()
+            .map(|e| {
+                let tx = e.value();
+                (*e.key(), tx.max_capacity() - tx.capacity())
+            })
+            .collect()
+    }
+
     /// Serialize a ServerWire message and broadcast to all clients except `sender`.
     /// Returns the UUIDs of clients whose write channels were full (frame dropped).
     #[inline(always)]

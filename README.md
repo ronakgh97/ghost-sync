@@ -8,6 +8,10 @@
 [![Reshiram](https://img.pokemondb.net/sprites/black-white/anim/normal/reshiram.gif)](https://pokemondb.net/pokedex/reshiram)
 [![Kyurem](https://img.pokemondb.net/sprites/black-white/anim/normal/kyurem.gif)](https://pokemondb.net/pokedex/kyurem)
 
+[![Giratina](https://img.pokemondb.net/sprites/black-white/anim/normal/giratina.gif)](https://pokemondb.net/pokedex/giratina)
+[![Dialga](https://img.pokemondb.net/sprites/black-white/anim/normal/dialga.gif)](https://pokemondb.net/pokedex/dialga)
+[![Palkia](https://img.pokemondb.net/sprites/black-white/anim/normal/palkia.gif)](https://pokemondb.net/pokedex/palkia)
+
 Networking in games is pure suffering.
 
 You start with “just a simple relay server.” *(alone let authoritative servers)*
@@ -56,19 +60,24 @@ game-server = { git = "https://github.com/ronakgh97/ghost-sync" }
 
 ![Bot-test](test-demo.gif)
 
-Tick rate: 60 hz
-Bot-client: 128
+- Tick rate: 60 hz
+- Bot-client: 128
 
-`N * C msg/second for each broadcast, so (N - 1) * (N * C) msg/second in total broadcast`
+`N * R msg/second for each broadcast, so (N - 1) * (N * R) msg/second in total broadcast`
 
-*That's 58,521,600 msg/second with 512 mb buffer channel*
+*That's 975,360 msg/second with 512 mb buffer channel*
+
+Resources
+
+- (https://github.com/rumaniel/Awesome-Game-Networking)
+- (https://www.gabrielgambetta.com/client-server-game-architecture.html)
 
 TODO
 
-Better lib design, currently its just a mess of functions and structs, need to refactor it into a more usable and
-intuitive API
-Add more examples, maybe a mini-game?
-Experimental UDP support, maybe using QUIC?
-Add tuned buffering and improve performance by lessen serialization and deserialization, where possible (Zero-copy,
-etc.)
-Fixed the DAMN BACKPRESSURE, CHANNEL GETS FULL AND THEN EVERYTHING BLOWS UP
+- Better lib design, currently its just a mess of functions and structs, need to refactor it into a more usable and
+- intuitive API
+- Add more examples, maybe a mini-game?
+- Experimental UDP support, maybe using QUIC?
+- Add tuned buffering and improve performance by lessen serialization and deserialization, where possible (Zero-copy,
+  etc.)
+- Fixed the DAMN BACKPRESSURE, CHANNEL GETS FULL AND THEN EVERYTHING BLOWS UP
