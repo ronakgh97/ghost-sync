@@ -81,3 +81,4 @@ TODO
 - Add tuned buffering and improve performance by lessen serialization and deserialization, where possible (Zero-copy,
   etc.)
 - Fixed the DAMN BACKPRESSURE, CHANNEL GETS FULL AND THEN EVERYTHING BLOWS UP
+- Somehow increase TCP write throughput, the only bottleneck right now is TCP write, which is fucking I/O bound!! 

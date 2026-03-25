@@ -358,18 +358,20 @@ async fn backpressure_fires_on_slow_client() {
 
     let server = Server::builder()
         .bind(format!("127.0.0.1:{port}"))
+        .channel_capacity(16)
+        .max_payload(2048)
         .handler(BackpressureCollector(collector.clone()))
         .build();
 
     server.pre_create_room("test").unwrap();
     let _handle = server.run().await.unwrap();
 
-    // Connect A — reads normally
+    // Connect A reads normally
     let mut a = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
     a.join("test").await.unwrap();
     let _ = a.recv().await.unwrap(); // Joined
 
-    // Connect B — will stop reading after join
+    // Connect B will stop reading after join
     let mut b = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
     b.join("test").await.unwrap();
     let _ = b.recv().await.unwrap(); // Joined
@@ -378,13 +380,19 @@ async fn backpressure_fires_on_slow_client() {
     let _ = a.recv().await.unwrap();
 
     // B stops reading. Its writer task will block when socket buffer fills.
-    // A floods broadcasts to fill B's write channel (capacity 64).
-    for i in 0..100 {
+    // A floods broadcasts to fill B's write channel (capacity 8).
+    for i in 0..1024 {
         a.broadcast(format!("msg-{i}").as_bytes()).await.unwrap();
     }
 
-    // Give writer tasks time to process
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    // Waiting for the hook to fire instead
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while tokio::time::Instant::now() < deadline {
+        if !collector.lock().unwrap().is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
 
     // Check if backpressure was recorded
     let events = collector.lock().unwrap();
@@ -392,6 +400,7 @@ async fn backpressure_fires_on_slow_client() {
         !events.is_empty(),
         "expected at least one backpressure event, got 0"
     );
+    assert!(events.iter().all(|(_, room)| room == "test"));
 }
 
 // Runtime room management

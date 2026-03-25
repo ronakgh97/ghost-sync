@@ -293,7 +293,7 @@ Set via `ServerBuilder`:
 | `max_payload(n)`      | `64 * 1024`      | Max frame size in bytes                                             |
 | `idle_timeout(d)`     | `31s`            | Max time without receiving any frame from client                    |
 | `ping_interval(d)`    | `13s`            | Ping cadence; also the pong deadline (miss = disconnect)            |
-| `channel_capacity(n)` | `64`             | Per-client write queue size; frames dropped when full               |
+| `channel_capacity(n)` | `1024`           | Per-client write queue size; frames dropped when full               |
 | `handler(h)`          | `NoopHandler`    | Custom `ServerHandler` implementation                               |
 
 - `idle_timeout` and `ping_interval` are independent. A client that stops

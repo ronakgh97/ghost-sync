@@ -12,7 +12,7 @@ use wincode::{SchemaRead, SchemaWrite};
 const ADDR: &str = "127.0.0.1:7777";
 const ROOM: &str = "test-room";
 const BOT_COUNT: usize = 144;
-const TICK_RATE: u64 = 40;
+const TICK_RATE: u64 = 24;
 const MAX_SPEED: f32 = 400.0;
 const SCREEN: f32 = 600.0;
 
@@ -165,9 +165,9 @@ async fn bot_loop(map: BotMap, bot_index: usize) {
             }
 
             // Recv with higher timeout to prevent starvation, but still detect disconnects
-            result = tokio::time::timeout(Duration::from_millis(50), client.recv()) => {
+            result = client.recv() => {
                 match result {
-                    Ok(Ok(Some(ServerEvent::Broadcast { sender_id, data }))) if sender_id != self_id => {
+                    Ok(Some(ServerEvent::Broadcast { sender_id, data })) if sender_id != self_id => {
                         MSG_RECV.fetch_add(1, Ordering::Relaxed);
                         BYTES_RECV.fetch_add(data.len() as u64, Ordering::Relaxed);
 
@@ -183,13 +183,13 @@ async fn bot_loop(map: BotMap, bot_index: usize) {
                             DESERIALIZE_FAIL.fetch_add(1, Ordering::Relaxed);
                         }
                     }
-                    Ok(Ok(Some(ServerEvent::Broadcast { .. }))) => {}
-                    Ok(Ok(Some(ServerEvent::PlayerLeft { client_id }))) => {
+                    Ok(Some(ServerEvent::Broadcast { .. })) => {}
+                    Ok(Some(ServerEvent::PlayerLeft { client_id })) => {
                         eprintln!("Bot {} disconnected", self_id);
                         map.remove(&client_id);
                     }
-                    Ok(Ok(Some(ServerEvent::PlayerJoined { .. }))) | Ok(Ok(Some(ServerEvent::Error(_)))) | Ok(Ok(Some(ServerEvent::Joined { .. }))) => {}
-                    Ok(Ok(None)) | Ok(Err(_)) | Err(_) => {
+                    Ok(Some(ServerEvent::PlayerJoined { .. })) | Ok(Some(ServerEvent::Error(_))) | Ok(Some(ServerEvent::Joined { .. })) => {}
+                    Ok(None) | Err(_)  => {
                         eprintln!("Bot {} disconnected", self_id);
                         map.remove(&self_id);
                         break;

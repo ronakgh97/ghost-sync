@@ -229,6 +229,20 @@ fn handle_command(
             Err(e) => format!("ERROR\n{}", e),
         },
 
+        "KICK_CLIENT" => match cmd.require_arg(0) {
+            Ok(client_id_str) => match Uuid::parse_str(client_id_str) {
+                Ok(client_id) => {
+                    if handle.kick_client(&client_id) {
+                        format!("OK\nClient {} kicked", client_id)
+                    } else {
+                        "ERROR\nClient not found or not in a room".to_string()
+                    }
+                }
+                Err(_) => "ERROR\nInvalid client ID format".to_string(),
+            },
+            Err(e) => format!("ERROR\n{}", e),
+        },
+
         "ROOM_CLIENTS" => match cmd.require_arg(0) {
             Ok(room_id) => match handle.get_room_clients(room_id) {
                 Some(clients) => {
@@ -284,7 +298,7 @@ async fn main() -> Result<()> {
         .max_payload(256 * 1024)
         .idle_timeout(Duration::from_secs(25))
         .ping_interval(Duration::from_secs(15))
-        .channel_capacity(1024 * 1024 * 1024 * 4)
+        .channel_capacity(1024 * 1024 * 1024)
         .handler(DaemonHandler::new(daemon.clone()))
         .build();
 

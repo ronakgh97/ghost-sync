@@ -169,6 +169,33 @@ impl ServerHandle {
     pub fn get_client_count(&self) -> usize {
         self.client_count.load(std::sync::atomic::Ordering::Relaxed)
     }
+
+    /// Kick a client from their current room. Broadcasts PlayerLeft to other clients
+    /// and calls the on_leave handler. The client connection will be closed by the server.
+    pub fn kick_client(&self, client_id: &Uuid) -> bool {
+        let room_id = match self.clients.get(client_id) {
+            Some(state) => match &state.room_id {
+                Some(rid) => rid.clone(),
+                None => return false,
+            },
+            None => return false,
+        };
+
+        let notify = ServerWire::PlayerLeft {
+            client_id: *client_id,
+        };
+        if let Some(room) = self.rooms.get(&room_id) {
+            let rt = tokio::runtime::Handle::current();
+            rt.block_on(async {
+                let _ = room.broadcast(*client_id, &notify).await;
+            });
+        }
+
+        self.rooms.remove_client(&room_id, client_id);
+        self.handler.on_leave(*client_id, &room_id);
+
+        true
+    }
 }
 
 impl Server {
@@ -281,8 +308,8 @@ impl Server {
         let client_id = Uuid::new_v4();
         stream.set_nodelay(true).ok();
         let (read_half, write_half) = stream.into_split();
-        let mut reader = tokio::io::BufReader::with_capacity(32 * 1024, read_half);
-        let mut writer = tokio::io::BufWriter::with_capacity(32 * 1024, write_half);
+        let mut reader = tokio::io::BufReader::with_capacity(1024 * 1024, read_half);
+        let mut writer = tokio::io::BufWriter::with_capacity(4 * 1024 * 1024, write_half);
 
         // This is the main bottleneck for backpressure handling. Each client has a dedicated writer task
         // that receives frames to send via this channel. If the channel is full, we know the client is falling behind and can drop frames or disconnect as needed.
@@ -611,7 +638,7 @@ impl ServerBuilder {
 
     /// Per-client write channel capacity. Frames are dropped when full
     /// (with `on_backpressure` hook). Higher values buffer more for bursty
-    /// games, lower values keep latency tight. Default: 64.
+    /// games, lower values keep latency tight. Default: 1024.
     pub fn channel_capacity(mut self, n: usize) -> Self {
         self.config.channel_capacity = n;
         self

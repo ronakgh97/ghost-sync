@@ -51,6 +51,10 @@ pub trait ServerHandler: Send + Sync + 'static {
 
     /// Called when a frame is dropped because a client's write channel is full.
     /// The affected clients are identified by their UUIDs.
+    ///
+    /// NOTE: For auto-kicking or pausing slow clients, you need to monitor channel length via [`ServerHandle::get_client_channel_len`](crate::ServerHandle::get_client_channel_len)
+    /// or [`ServerHandle::get_room_channel_lens`](crate::ServerHandle::get_room_channel_lens) and implement your own logic in this hook.
+    /// The library does not auto-kick or pause clients on backpressure, as some games may prefer to drop frames silently.
     fn on_backpressure(&self, _client_id: Uuid, _room_id: &str) {}
 
     /// Called when server is shutdown via ctrl-c (shutdown signals)
