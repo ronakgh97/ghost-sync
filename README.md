@@ -14,14 +14,14 @@
 
 Networking in games is pure suffering.
 
-You start with “just a simple relay server.” *(alone let authoritative servers)*
+You start with “just a simple relay server.” _(alone let authoritative servers)_
 Just a few sockets. A couple messages. Clean.
 Few hours later:
 you’re debugging why one packet arrives in the future, one in the past, and one simply refuses to exist.
 You forget the game.
 The game forgets you.
 Now it’s just you, a growing pile of networking code,
-and a silent client that *definitely* connected but somehow didn’t.
+and a silent client that _definitely_ connected but somehow didn’t.
 You promise yourself:
 “just one more fix”
 Congratulations.
@@ -60,12 +60,12 @@ game-server = { git = "https://github.com/ronakgh97/ghost-sync" }
 
 ![Bot-test](test-demo.gif)
 
-- Tick rate: 60 hz
-- Bot-client: 128
+- Tick rate: 40 hz
+- Bot-client: 144
 
 `N * R msg/second for each broadcast, so (N - 1) * (N * R) msg/second in total broadcast`
 
-*That's 975,360 msg/second with 512 mb buffer channel*
+_That's 823,680 msg/second with 512 mb buffer channel_
 
 Resources
 

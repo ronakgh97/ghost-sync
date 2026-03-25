@@ -243,13 +243,29 @@ fn handle_command(
             Err(e) => format!("ERROR\n{}", e),
         },
 
-        "METRICS" => format!(
-            "OK\nconnections={}\nrooms={}\nclients={}\nuptime={}hrs",
-            daemon.metrics.total_connections.load(Ordering::Relaxed),
-            handle.room_count(),
-            handle.get_client_count(),
-            daemon.metrics.start_time.elapsed().as_secs() / 3600
-        ),
+        "METRICS" => {
+            let mut response = format!(
+                "OK\nconnections={}\nrooms={}\nclients={}\nuptime={}hrs",
+                daemon.metrics.total_connections.load(Ordering::Relaxed),
+                handle.room_count(),
+                handle.get_client_count(),
+                daemon.metrics.start_time.elapsed().as_secs() / 3600
+            );
+
+            // Show channel queue depths for all rooms
+            for room_id in handle.get_room_ids() {
+                if let Some(lens) = handle.get_room_channel_lens(&room_id) {
+                    if !lens.is_empty() {
+                        response.push_str(&format!("\n{} channel depths:", room_id));
+                        for (id, len) in lens {
+                            response.push_str(&format!("\n  {}: {}", &id.to_string()[..8], len));
+                        }
+                    }
+                }
+            }
+
+            response
+        }
 
         _ => format!("ERROR\nUnknown command: {}", cmd.name),
     }
@@ -268,7 +284,7 @@ async fn main() -> Result<()> {
         .max_payload(256 * 1024)
         .idle_timeout(Duration::from_secs(25))
         .ping_interval(Duration::from_secs(15))
-        .channel_capacity(1024 * 1024 * 512)
+        .channel_capacity(1024 * 1024 * 1024 * 4)
         .handler(DaemonHandler::new(daemon.clone()))
         .build();
 
