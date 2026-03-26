@@ -1,10 +1,11 @@
-use std::collections::HashMap;
+use std::any::Any;
 
 use bytes::Bytes;
 use dashmap::DashMap;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use crate::storage::Storage;
 use crate::types::{Result, ServerWire, SyncError};
 
 /// A broadcast frame to be sent to a client. `Bytes` is reference-counted,
@@ -17,20 +18,20 @@ pub type BroadcastFrame = Bytes;
 /// connected clients identified by their UUIDs. Each client has a
 /// write channel for outgoing frames.
 ///
-/// Rooms carry a string metadata map. The library does not interpret metadata —
+/// Rooms carry a typed metadata storage. The library does not interpret metadata —
 /// users store whatever they need (passwords, max players, game mode, etc.)
 /// and check it in their [`ServerHandler`](crate::ServerHandler) hooks.
 pub struct Room {
     clients: DashMap<Uuid, mpsc::Sender<BroadcastFrame>>,
-    metadata: DashMap<String, String>,
+    pub(crate) metadata: Storage,
 }
 
 #[allow(dead_code)]
 impl Room {
     fn new() -> Self {
         Self {
-            clients: DashMap::with_capacity(64),
-            metadata: DashMap::with_capacity(128),
+            clients: DashMap::with_capacity(128),
+            metadata: Storage::new(),
         }
     }
 
@@ -58,7 +59,7 @@ impl Room {
     ///
     /// Returns `None` if the client is not in this room.
     /// Higher values indicate the client's writer task is falling behind.
-    #[inline(always)]
+    #[inline]
     pub fn channel_len(&self, id: &Uuid) -> Option<usize> {
         self.clients
             .get(id)
@@ -69,7 +70,7 @@ impl Room {
     ///
     /// Returns `(uuid, channel_len)` pairs. Useful for monitoring
     /// backpressure and identifying slow clients.
-    #[inline(always)]
+    #[inline]
     pub fn all_channel_lens(&self) -> Vec<(Uuid, usize)> {
         self.clients
             .iter()
@@ -122,31 +123,34 @@ impl Room {
         self.clients.iter().map(|e| *e.key()).collect()
     }
 
-    /// Get a metadata value by key.
+    /// Store a typed metadata value. Replaces any previous value.
     #[inline]
-    pub fn get_meta(&self, key: &str) -> Option<String> {
-        self.metadata.get(key).map(|v| v.clone())
+    pub fn set_meta<T: Any + Send + Sync + 'static>(&self, value: T) {
+        self.metadata.set(value);
     }
 
-    /// Set a metadata key-value pair.
+    /// Read the stored metadata via a callback.
+    ///
+    /// Returns `None` if no metadata is set or the stored type doesn't match `T`.
+    /// The callback receives `&T` and can extract whatever it needs — no `Clone` required.
     #[inline]
-    pub fn set_meta(&self, key: impl Into<String>, value: impl Into<String>) {
-        self.metadata.insert(key.into(), value.into());
+    pub fn get_meta<T: Any + Send + Sync + 'static, R>(
+        &self,
+        f: impl FnOnce(&T) -> R,
+    ) -> Option<R> {
+        self.metadata.get(f)
     }
 
-    /// Remove a metadata key.
+    /// Remove and return the stored metadata, downcasted to `T`.
     #[inline]
-    pub fn remove_meta(&self, key: &str) -> bool {
-        self.metadata.remove(key).is_some()
+    pub fn take_meta<T: Any + Send + Sync + 'static>(&self) -> Option<T> {
+        self.metadata.take()
     }
 
-    /// Get all metadata as a HashMap.
+    /// Check if metadata is set on this room.
     #[inline]
-    pub fn get_all_meta(&self) -> HashMap<String, String> {
-        self.metadata
-            .iter()
-            .map(|e| (e.key().clone(), e.value().clone()))
-            .collect()
+    pub fn has_meta(&self) -> bool {
+        self.metadata.is_set()
     }
 }
 

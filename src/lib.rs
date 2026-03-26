@@ -6,6 +6,7 @@ pub mod log;
 mod protocol;
 mod room;
 mod server;
+mod storage;
 mod types;
 
 pub use client::{Client, ClientBuilder};

@@ -1,5 +1,6 @@
 use tokio::io::{BufReader, BufWriter};
 use tokio::net::TcpStream;
+use uuid::Uuid;
 
 use crate::protocol;
 use crate::types::{ClientWire, ServerEvent, ServerWire, SyncError};
@@ -9,6 +10,7 @@ pub struct Client {
     reader: BufReader<tokio::net::tcp::OwnedReadHalf>,
     writer: BufWriter<tokio::net::tcp::OwnedWriteHalf>,
     max_payload: usize,
+    client_id: Option<Uuid>,
 }
 
 impl Client {
@@ -20,6 +22,14 @@ impl Client {
     /// Start building a client.
     pub fn builder() -> ClientBuilder {
         ClientBuilder::new()
+    }
+
+    /// Get the client's UUID assigned by the server.
+    ///
+    /// Returns `None` before the first successful [`join`](Self::join) + [`recv`](Self::recv)
+    /// (the server assigns the ID and sends it in the `Joined` event).
+    pub fn client_id(&self) -> Option<Uuid> {
+        self.client_id
     }
 
     /// Join a room. If room does not exist, returns [`SyncError::RoomNotFound`]
@@ -36,7 +46,7 @@ impl Client {
     }
 
     /// Send a ping (keep-alive).
-    #[inline(always)]
+    #[inline]
     pub async fn ping(&mut self) -> Result<(), SyncError> {
         self.send(&ClientWire::Ping).await
     }
@@ -53,7 +63,7 @@ impl Client {
     /// Receive the next server event.
     /// Ping/pong keepalive is handled internally
     /// Returns `Ok(None)` on clean disconnect.
-    #[inline]
+    #[inline(always)]
     pub async fn recv(&mut self) -> Result<Option<ServerEvent>, SyncError> {
         loop {
             let payload = match protocol::read_frame_raw(&mut self.reader, self.max_payload).await {
@@ -78,14 +88,21 @@ impl Client {
                 continue;
             }
 
+            // Capture client_id from Joined event
+            if let ServerWire::Joined { client_id, .. } = &wire {
+                self.client_id = Some(*client_id);
+            }
+
             return Ok(Some(Self::wire_to_event(wire)));
         }
     }
 
+    #[inline(always)]
     async fn send(&mut self, msg: &ClientWire) -> Result<(), SyncError> {
         protocol::write_frame(&mut self.writer, msg).await
     }
 
+    #[inline]
     fn wire_to_event(wire: ServerWire) -> ServerEvent {
         match wire {
             ServerWire::Joined { client_id, room_id } => ServerEvent::Joined { client_id, room_id },
@@ -141,6 +158,7 @@ impl ClientBuilder {
             reader: BufReader::with_capacity(2 * 1024 * 1024, read_half),
             writer: BufWriter::with_capacity(1024 * 1024, write_half),
             max_payload: self.max_payload,
+            client_id: None,
         })
     }
 }

@@ -597,3 +597,87 @@ async fn server_load_test() {
         panic!("load test failed: {failure}");
     }
 }
+
+// Metadata tests
+#[derive(Clone, Debug, PartialEq)]
+struct RoomMeta {
+    mode: String,
+    max_players: u32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ClientMeta {
+    username: String,
+}
+
+#[tokio::test]
+async fn room_metadata_typed() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+
+    let server = Server::builder().bind(format!("127.0.0.1:{port}")).build();
+
+    server.pre_create_room("test").unwrap();
+    let handle = server.run().await.unwrap();
+
+    // No metadata initially
+    assert!(!handle.room_has_meta("test"));
+
+    // Set metadata (typed struct, no string keys)
+    let meta = RoomMeta {
+        mode: "deathmatch".into(),
+        max_players: 8,
+    };
+    assert!(handle.set_room_meta("test", meta.clone()));
+    assert!(handle.room_has_meta("test"));
+
+    // Read via callback
+    let mode = handle.with_room_meta("test", |m: &RoomMeta| m.mode.clone());
+    assert_eq!(mode, Some("deathmatch".to_string()));
+
+    let max = handle.with_room_meta("test", |m: &RoomMeta| m.max_players);
+    assert_eq!(max, Some(8));
+
+    let wrong = handle.with_room_meta("test", |v: &u64| *v);
+    assert_eq!(wrong, None);
+
+    // Take metadata (removes it)
+    let taken = handle.take_room_meta::<RoomMeta>("test");
+    assert_eq!(taken, Some(meta));
+    assert!(!handle.room_has_meta("test"));
+
+    // After take, reading returns None
+    let gone = handle.with_room_meta("test", |m: &RoomMeta| m.mode.clone());
+    assert_eq!(gone, None);
+
+    // Nonexistent room returns false
+    assert!(!handle.set_room_meta(
+        "nope",
+        RoomMeta {
+            mode: "x".into(),
+            max_players: 1,
+        }
+    ));
+    assert!(!handle.room_has_meta("nope"));
+}
+
+#[tokio::test]
+async fn client_metadata_typed() {
+    let (handle, port) = start_server().await;
+    let mut client = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
+    client.join("test").await.unwrap();
+    let _ = client.recv().await.unwrap(); // Joined
+
+    let client_id = client.client_id().unwrap();
+    assert!(handle.set_client_meta(
+        &client_id,
+        ClientMeta {
+            username: "alice".into(),
+        }
+    ));
+    assert!(handle.client_has_meta(&client_id));
+
+    let name = handle.with_client_meta(&client_id, |m: &ClientMeta| m.username.clone());
+    assert_eq!(name, Some("alice".to_string()));
+}

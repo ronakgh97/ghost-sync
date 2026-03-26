@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::any::Any;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,6 +12,7 @@ use uuid::Uuid;
 use crate::handler::{NoopHandler, ServerHandler};
 use crate::protocol;
 use crate::room::RoomManager;
+use crate::storage::Storage;
 use crate::types::{ClientWire, Result, ServerConfig, ServerWire, SyncError};
 use crate::{error, info, warn};
 
@@ -19,6 +20,7 @@ use crate::{error, info, warn};
 struct ClientState {
     room_id: Option<String>,
     addr: SocketAddr,
+    metadata: Storage,
 }
 
 /// A broadcast relay game server.
@@ -74,7 +76,7 @@ impl ServerHandle {
     }
 
     /// Create a room at runtime. Fails if the room already exists.
-    #[inline(always)]
+    #[inline]
     pub fn create_room(&self, id: &str) -> Result<()> {
         self.rooms.create(id)?;
         self.handler.on_room_create(id);
@@ -85,7 +87,7 @@ impl ServerHandle {
     ///
     /// Soft delete: connected clients are not kicked, but their next
     /// broadcast or join will fail with a [`SyncError::RoomNotFound`].
-    #[inline(always)]
+    #[inline]
     pub fn delete_room(&self, id: &str) -> bool {
         let existed = self.rooms.delete(id);
         if existed {
@@ -135,24 +137,80 @@ impl ServerHandle {
         self.rooms.get(room_id).map(|r| r.all_channel_lens())
     }
 
-    /// Get a metadata value from a room.
-    pub fn get_room_meta(&self, room_id: &str, key: &str) -> Option<String> {
-        self.rooms.get(room_id)?.get_meta(key)
-    }
-
-    /// Set a metadata value on a room. Returns `false` if the room doesn't exist.
-    pub fn set_room_meta(&self, room_id: &str, key: &str, value: &str) -> bool {
+    /// Store typed metadata on a room. Replaces any previous metadata.
+    /// Returns `false` if the room doesn't exist.
+    pub fn set_room_meta<T: Any + Send + Sync + 'static>(&self, room_id: &str, value: T) -> bool {
         if let Some(room) = self.rooms.get(room_id) {
-            room.set_meta(key, value);
+            room.metadata.set(value);
             true
         } else {
             false
         }
     }
 
-    /// Get all metadata from a room as a HashMap. Returns `None` if room doesn't exist.
-    pub fn get_room_meta_all(&self, room_id: &str) -> Option<HashMap<String, String>> {
-        self.rooms.get(room_id).map(|r| r.get_all_meta())
+    /// Read room metadata via a callback.
+    ///
+    /// The callback receives `&T` if metadata is set and the type matches.
+    /// Returns `None` if the room doesn't exist or has no metadata of type `T`.
+    ///
+    /// This avoids needing `Clone` on your metadata type.
+    pub fn with_room_meta<T: Any + Send + Sync + 'static, R>(
+        &self,
+        room_id: &str,
+        f: impl FnOnce(&T) -> R,
+    ) -> Option<R> {
+        self.rooms.get(room_id)?.metadata.get(f)
+    }
+
+    /// Remove and return room metadata, downcasted to `T`.
+    /// Returns `None` if the room doesn't exist or has no metadata of type `T`.
+    pub fn take_room_meta<T: Any + Send + Sync + 'static>(&self, room_id: &str) -> Option<T> {
+        self.rooms.get(room_id)?.metadata.take()
+    }
+
+    /// Check if a room has metadata set.
+    pub fn room_has_meta(&self, room_id: &str) -> bool {
+        self.rooms.get(room_id).is_some_and(|r| r.metadata.is_set())
+    }
+
+    /// Store typed metadata on a connected client. Replaces any previous metadata.
+    /// Returns `false` if the client doesn't exist.
+    pub fn set_client_meta<T: Any + Send + Sync + 'static>(
+        &self,
+        client_id: &Uuid,
+        value: T,
+    ) -> bool {
+        if let Some(state) = self.clients.get(client_id) {
+            state.metadata.set(value);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Read client metadata via a callback.
+    ///
+    /// The callback receives `&T` if metadata is set and the type matches.
+    /// Returns `None` if the client doesn't exist or has no metadata of type `T`.
+    pub fn with_client_meta<T: Any + Send + Sync + 'static, R>(
+        &self,
+        client_id: &Uuid,
+        f: impl FnOnce(&T) -> R,
+    ) -> Option<R> {
+        self.clients.get(client_id)?.metadata.get(f)
+    }
+
+    /// Remove and return client metadata, downcasted to `T`.
+    /// Returns `None` if the client doesn't exist or has no metadata of type `T`.
+    pub fn take_client_meta<T: Any + Send + Sync + 'static>(&self, client_id: &Uuid) -> Option<T> {
+        self.clients.get(client_id)?.metadata.take()
+    }
+
+    /// Check if a client has metadata set.
+    pub fn client_has_meta(&self, client_id: &Uuid) -> bool {
+        self.clients
+            .get(client_id)
+            .is_some_and(|c| c.metadata.is_set())
     }
 
     /// Room a client is currently in. Returns `None` if not in a room or not connected.
@@ -358,6 +416,7 @@ impl Server {
             ClientState {
                 room_id: None,
                 addr,
+                metadata: Storage::new(),
             },
         );
 
@@ -540,7 +599,7 @@ impl Server {
         Ok(())
     }
 
-    #[inline]
+    #[inline(always)]
     async fn cleanup_client(self: &Arc<Self>, client_id: Uuid, room_id: &str) {
         let notify = ServerWire::PlayerLeft { client_id };
         if let Some(room) = self.rooms.get(room_id) {

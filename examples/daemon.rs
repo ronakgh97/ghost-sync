@@ -36,6 +36,13 @@ impl DaemonHandler {
     }
 }
 
+#[allow(dead_code)]
+#[derive(Debug)]
+struct RoomMeta {
+    foo: String,
+    bar: String,
+}
+
 impl ServerHandler for DaemonHandler {
     fn on_connect(&self, addr: SocketAddr) -> bool {
         let count = self
@@ -310,6 +317,13 @@ async fn main() -> Result<()> {
     }
 
     server_handle.create_room("test-room")?;
+    server_handle.set_room_meta(
+        "test-room",
+        RoomMeta {
+            foo: "foo".to_string(),
+            bar: "bar".to_string(),
+        },
+    );
 
     let ctrl_listener = TcpListener::bind("0.0.0.0:8888").await?;
     info!("Control server listening on 0.0.0.0:8888");
