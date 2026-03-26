@@ -401,7 +401,7 @@ impl Server {
         result
     }
 
-    #[inline(always)]
+    #[inline]
     async fn client_loop(
         self: &Arc<Self>,
         client_id: Uuid,
@@ -480,7 +480,7 @@ impl Server {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     async fn process_message(
         self: &Arc<Self>,
         client_id: Uuid,
@@ -598,7 +598,7 @@ impl Server {
         Ok(())
     }
 
-    #[inline(always)]
+    #[inline]
     async fn cleanup_client(self: &Arc<Self>, client_id: Uuid, room_id: &str) {
         let notify = ServerWire::PlayerLeft { client_id };
         if let Some(room) = self.rooms.get(room_id) {
@@ -613,7 +613,7 @@ impl Server {
         self.handler.on_leave(client_id, room_id);
     }
 
-    #[inline(always)]
+    #[inline]
     async fn send_to_client(&self, client_id: Uuid, tx: &mpsc::Sender<Bytes>, msg: &ServerWire) {
         if let Ok(payload) = wincode::serialize(msg) {
             // If the channel is full, we drop the frame and call the backpressure hook.

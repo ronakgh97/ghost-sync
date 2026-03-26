@@ -5,7 +5,7 @@ use wincode::config::DefaultConfig;
 use wincode::SchemaWrite;
 
 /// Write a length-prefixed wincode-serialized frame.
-#[inline(always)]
+#[inline]
 pub async fn write_frame<W, T>(writer: &mut W, msg: &T) -> Result<()>
 where
     W: AsyncWrite + Unpin,
@@ -21,7 +21,7 @@ where
 }
 
 /// Read a length-prefixed wincode-deserialized frame with a max payload size check.
-#[inline(always)]
+#[inline]
 pub async fn read_frame_raw<R>(reader: &mut R, max_payload: usize) -> Result<Bytes>
 where
     R: AsyncRead + Unpin,
@@ -44,7 +44,7 @@ where
 
 /// Write a raw byte slice as a length-prefixed frame to tcp buffer
 /// Flushes on every writes btw
-#[inline(always)]
+#[inline]
 pub async fn write_frame_raw<W>(writer: &mut W, payload: Bytes) -> Result<()>
 where
     W: AsyncWrite + Unpin,

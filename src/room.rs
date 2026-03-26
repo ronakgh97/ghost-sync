@@ -83,7 +83,7 @@ impl Room {
 
     /// Serialize a ServerWire message and broadcast to all clients except `sender`.
     /// Returns the UUIDs of clients whose write channels were full (frame dropped).
-    #[inline(always)]
+    #[inline]
     pub async fn broadcast(&self, sender: Uuid, msg: &ServerWire) -> Vec<Uuid> {
         let payload = match wincode::serialize(msg) {
             Ok(p) => Bytes::from(p),
@@ -96,7 +96,7 @@ impl Room {
     /// Returns the UUIDs of clients whose write channels were full (frame dropped).
     ///
     /// Cloning `Bytes` is an Arc pointer bump — no data copy regardless of payload size.
-    #[inline(always)]
+    #[inline]
     pub async fn broadcast_raw(&self, sender: Uuid, payload: Bytes) -> Vec<Uuid> {
         let mut dropped = Vec::new();
         for entry in self.clients.iter() {
@@ -108,7 +108,7 @@ impl Room {
     }
 
     /// Send a ServerWire message to a specific client.
-    #[inline(always)]
+    #[inline]
     pub async fn send_to(&self, id: &Uuid, msg: &ServerWire) {
         if let Some(tx) = self.clients.get(id) {
             if let Ok(payload) = wincode::serialize(msg) {
@@ -168,7 +168,7 @@ impl RoomManager {
     }
 
     /// Create a room with the given ID. Fails if the room already exists.
-    #[inline(always)]
+    #[inline]
     pub fn create(&self, room_id: &str) -> Result<()> {
         if self.rooms.contains_key(room_id) {
             return Err(SyncError::RoomAlreadyExists(room_id.to_string()));
@@ -178,13 +178,13 @@ impl RoomManager {
     }
 
     /// Delete a room. Returns true if the room existed.
-    #[inline(always)]
+    #[inline]
     pub fn delete(&self, room_id: &str) -> bool {
         self.rooms.remove(room_id).is_some()
     }
 
     /// Remove a client from a room. Does NOT auto-delete the room.
-    #[inline(always)]
+    #[inline]
     pub fn remove_client(&self, room_id: &str, client_id: &Uuid) {
         if let Some(room) = self.rooms.get(room_id) {
             room.remove(client_id);

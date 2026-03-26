@@ -64,7 +64,7 @@ impl Client {
     /// Receive the next server event.
     /// Ping/pong keepalive is handled internally
     /// Returns `Ok(None)` on clean disconnect.
-    #[inline(always)]
+    #[inline]
     pub async fn recv(&mut self) -> Result<Option<ServerEvent>, SyncError> {
         loop {
             let payload = match protocol::read_frame_raw(&mut self.reader, self.max_payload).await {
@@ -98,7 +98,7 @@ impl Client {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     async fn send(&mut self, msg: &ClientWire) -> Result<(), SyncError> {
         protocol::write_frame(&mut self.writer, msg).await
     }
