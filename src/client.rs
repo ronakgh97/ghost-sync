@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use tokio::io::{BufReader, BufWriter};
 use tokio::net::TcpStream;
 use uuid::Uuid;
@@ -109,7 +110,10 @@ impl Client {
             ServerWire::PlayerJoined { client_id } => ServerEvent::PlayerJoined { client_id },
             ServerWire::PlayerLeft { client_id } => ServerEvent::PlayerLeft { client_id },
             ServerWire::Error(msg) => ServerEvent::Error(msg),
-            ServerWire::Broadcast { sender_id, data } => ServerEvent::Broadcast { sender_id, data },
+            ServerWire::Broadcast { sender_id, data } => ServerEvent::Broadcast {
+                sender_id,
+                data: Bytes::from(data),
+            },
             // Ping/Pong are handled internally before reaching here
             _ => unreachable!("ping/pong should be handled in recv()"),
         }
@@ -155,8 +159,8 @@ impl ClientBuilder {
         let (read_half, write_half) = stream.into_split();
 
         Ok(Client {
-            reader: BufReader::with_capacity(2 * 1024 * 1024, read_half),
-            writer: BufWriter::with_capacity(1024 * 1024, write_half),
+            reader: BufReader::with_capacity(4 * 1024 * 1024, read_half),
+            writer: BufWriter::with_capacity(6 * 1024 * 1024, write_half),
             max_payload: self.max_payload,
             client_id: None,
         })

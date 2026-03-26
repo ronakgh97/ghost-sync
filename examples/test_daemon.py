@@ -44,13 +44,13 @@ def main():
         room_count = resp.count("clients\n")
         print(f"Room count: {room_count}")
 
-        print("> CREATE_ROOM test-room")
+        print("> CREATE_ROOM foo-bar-room")
         print(send_cmd(sock, "CREATE_ROOM\ntest-room\n"))
 
         print("> ROOM_CLIENTS test-room")
         print(send_cmd(sock, "ROOM_CLIENTS\ntest-room\n"))
 
-        print("> DELETE_ROOM test-room")
+        print("> DELETE_ROOM foo-bar-room")
         print(send_cmd(sock, "DELETE_ROOM\ntest-room\n"))
 
         print("> METRICS")

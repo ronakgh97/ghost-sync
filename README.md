@@ -12,7 +12,7 @@
 [![Dialga](https://img.pokemondb.net/sprites/black-white/anim/normal/dialga.gif)](https://pokemondb.net/pokedex/dialga)
 [![Palkia](https://img.pokemondb.net/sprites/black-white/anim/normal/palkia.gif)](https://pokemondb.net/pokedex/palkia)
 
-Networking in games is pure suffering.
+***Networking in games is pure suffering.***
 
 You start with “just a simple relay server.” _(alone let authoritative servers)_
 Just a few sockets. A couple messages. Clean.
@@ -81,4 +81,4 @@ TODO
 - Add tuned buffering and improve performance by lessen serialization and deserialization, where possible (Zero-copy,
   etc.)
 - Fixed the DAMN BACKPRESSURE, CHANNEL GETS FULL AND THEN EVERYTHING BLOWS UP
-- Somehow increase TCP write throughput, the only bottleneck right now is TCP write, which is fucking I/O bound!! 
+- Somehow increase TCP write throughput, the only bottleneck right now is TCP write, which is fucking I/O bound!!

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use dashmap::DashMap;
 use ghost_sync::{info, warn, Server, ServerHandle, ServerHandler, Uuid};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -13,26 +14,31 @@ struct Daemon {
 }
 
 struct Metrics {
-    total_connections: AtomicUsize,
     start_time: Instant,
+    total_connections: AtomicUsize,
+    // Key - ClientID, Value - Number of frames dropped
+    backpressure_tracker: DashMap<Uuid, AtomicUsize>,
 }
 
 impl Daemon {
     fn new() -> Self {
         Self {
             metrics: Metrics {
-                total_connections: AtomicUsize::new(0),
                 start_time: Instant::now(),
+                total_connections: AtomicUsize::new(0),
+                backpressure_tracker: DashMap::with_capacity(1024),
             },
         }
     }
 }
 
-struct DaemonHandler(Arc<Daemon>);
+struct DaemonHandler {
+    daemon: Arc<Daemon>,
+}
 
 impl DaemonHandler {
-    fn new(demon: Arc<Daemon>) -> Self {
-        Self(demon)
+    fn new(daemon: Arc<Daemon>) -> Self {
+        Self { daemon }
     }
 }
 
@@ -46,7 +52,7 @@ struct RoomMeta {
 impl ServerHandler for DaemonHandler {
     fn on_connect(&self, addr: SocketAddr) -> bool {
         let count = self
-            .0
+            .daemon
             .metrics
             .total_connections
             .fetch_add(1, Ordering::Relaxed)
@@ -77,6 +83,12 @@ impl ServerHandler for DaemonHandler {
             "Backpressure: Client {} in room '{}' has a full write channel, frame dropped",
             client_id, room_id
         );
+        let tracker = &self.daemon.metrics.backpressure_tracker;
+        _ = tracker
+            .entry(client_id)
+            .or_insert_with(|| AtomicUsize::new(0))
+            .fetch_add(1, Ordering::Relaxed)
+            + 1;
     }
 }
 

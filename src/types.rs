@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use std::time::Duration;
 use uuid::Uuid;
 use wincode::{SchemaRead, SchemaWrite};
@@ -37,7 +38,7 @@ pub enum ServerEvent {
     /// Server error.
     Error(String),
     /// Relayed data from a peer.
-    Broadcast { sender_id: Uuid, data: Vec<u8> },
+    Broadcast { sender_id: Uuid, data: Bytes },
 }
 
 /// Server configuration.
@@ -74,7 +75,7 @@ impl Default for ServerConfig {
             // Non-divisible defaults to avoid idle_timeout and ping_interval
             idle_timeout: Duration::from_secs(31),
             ping_interval: Duration::from_secs(13),
-            channel_capacity: 64,
+            channel_capacity: 1024,
         }
     }
 }

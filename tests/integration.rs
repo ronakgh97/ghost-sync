@@ -1,10 +1,10 @@
 #![allow(deprecated)]
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-
+use bytes::Bytes;
 use ghost_sync::{Client, Server, ServerEvent, SyncError};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 
 /// Helper: start a server on a random port with a "test" room.
@@ -97,7 +97,7 @@ async fn broadcast_relay() {
     // A should receive it
     match a.recv().await.unwrap() {
         Some(ServerEvent::Broadcast { data, .. }) => {
-            assert_eq!(&data, b"hello");
+            assert_eq!(data, Bytes::from_static(b"hello"));
         }
         other => panic!("expected Broadcast, got: {:?}", other.is_some()),
     }

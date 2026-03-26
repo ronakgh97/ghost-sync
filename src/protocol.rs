@@ -1,4 +1,5 @@
 use crate::types::Result;
+use bytes::Bytes;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use wincode::config::DefaultConfig;
 use wincode::SchemaWrite;
@@ -21,7 +22,7 @@ where
 
 /// Read a length-prefixed wincode-deserialized frame with a max payload size check.
 #[inline(always)]
-pub async fn read_frame_raw<R>(reader: &mut R, max_payload: usize) -> Result<Vec<u8>>
+pub async fn read_frame_raw<R>(reader: &mut R, max_payload: usize) -> Result<Bytes>
 where
     R: AsyncRead + Unpin,
 {
@@ -38,18 +39,18 @@ where
 
     let mut payload = vec![0u8; len];
     reader.read_exact(&mut payload).await?;
-    Ok(payload)
+    Ok(Bytes::from(payload))
 }
 
 /// Write a raw byte slice as a length-prefixed frame.
 #[inline(always)]
-pub async fn write_frame_raw<W>(writer: &mut W, payload: &[u8]) -> Result<()>
+pub async fn write_frame_raw<W>(writer: &mut W, payload: Bytes) -> Result<()>
 where
     W: AsyncWrite + Unpin,
 {
     let len = payload.len() as u32;
     writer.write_all(&len.to_be_bytes()).await?;
-    writer.write_all(payload).await?;
+    writer.write_all(&payload).await?;
     writer.flush().await?;
     Ok(())
 }

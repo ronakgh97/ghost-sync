@@ -366,8 +366,8 @@ impl Server {
         let client_id = Uuid::new_v4();
         stream.set_nodelay(true).ok();
         let (read_half, write_half) = stream.into_split();
-        let mut reader = tokio::io::BufReader::with_capacity(1024 * 1024, read_half);
-        let mut writer = tokio::io::BufWriter::with_capacity(4 * 1024 * 1024, write_half);
+        let mut reader = tokio::io::BufReader::with_capacity(6 * 1024 * 1024, read_half);
+        let mut writer = tokio::io::BufWriter::with_capacity(12 * 1024 * 1024, write_half);
 
         // This is the main bottleneck for backpressure handling. Each client has a dedicated writer task
         // that receives frames to send via this channel. If the channel is full, we know the client is falling behind and can drop frames or disconnect as needed.
@@ -376,7 +376,7 @@ impl Server {
         // Spawn writer task
         let writer_handle = tokio::spawn(async move {
             while let Some(frame) = write_rx.recv().await {
-                if let Err(e) = protocol::write_frame_raw(&mut writer, &frame).await {
+                if let Err(e) = protocol::write_frame_raw(&mut writer, frame).await {
                     #[allow(clippy::needless_ifs)]
                     if !e.is_connection_closed() {}
                     warn!("write error: {e}");
@@ -617,6 +617,7 @@ impl Server {
     #[inline(always)]
     async fn send_to_client(&self, client_id: Uuid, tx: &mpsc::Sender<Bytes>, msg: &ServerWire) {
         if let Ok(payload) = wincode::serialize(msg) {
+            // If the channel is full, we drop the frame and call the backpressure hook.
             if tx.try_send(Bytes::from(payload)).is_err() {
                 if let Some(state) = self.clients.get(&client_id) {
                     if let Some(ref room_id) = state.room_id {
@@ -711,7 +712,7 @@ impl ServerBuilder {
 
     /// Build the server. Call [`Server::run`] to start accepting connections.
     pub fn build(self) -> Server {
-        let (tx, _) = broadcast::channel(1);
+        let (tx, _) = broadcast::channel(4);
         Server {
             config: self.config.clone(),
             handler: self.handler,
