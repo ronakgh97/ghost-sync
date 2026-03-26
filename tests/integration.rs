@@ -360,6 +360,7 @@ async fn backpressure_fires_on_slow_client() {
         .bind(format!("127.0.0.1:{port}"))
         .channel_capacity(16)
         .max_payload(2048)
+        .ping_interval(Duration::from_secs(60))
         .handler(BackpressureCollector(collector.clone()))
         .build();
 

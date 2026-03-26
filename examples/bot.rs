@@ -11,7 +11,7 @@ use wincode::{SchemaRead, SchemaWrite};
 
 const ADDR: &str = "127.0.0.1:7777";
 const ROOM: &str = "test-room";
-const BOT_COUNT: usize = 64;
+const BOT_COUNT: usize = 12;
 const TICK_RATE: u64 = 24;
 const MAX_SPEED: f32 = 400.0;
 const SCREEN: f32 = 600.0;
@@ -24,7 +24,8 @@ static DESERIALIZE_FAIL: AtomicU64 = AtomicU64::new(0);
 static SERIALIZE_FAIL: AtomicU64 = AtomicU64::new(0);
 static RUNTIME: std::sync::LazyLock<tokio::runtime::Runtime> = std::sync::LazyLock::new(|| {
     tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(24)
+        .worker_threads(32)
+        .enable_io()
         .enable_all()
         .build()
         .expect("Failed to build tokio runtime")
@@ -279,39 +280,47 @@ async fn main() {
         );
         y += step;
 
-        // draw_text(
-        //     &format!(
-        //         "Msg Loss: {}%",
-        //         if msg_sent > 0 {
-        //             (msg_sent - msg_recv) * 100 / msg_sent
-        //         } else {
-        //             0
-        //         }
-        //     ),
-        //     10.0,
-        //     y,
-        //     20.0,
-        //     YELLOW,
-        // );
-        //
-        // y += step;
-        //
-        // draw_text(
-        //     &format!(
-        //         "Byte Loss: {}%",
-        //         if bytes_sent > 0 {
-        //             (bytes_sent - bytes_recv) * 100 / bytes_sent
-        //         } else {
-        //             0
-        //         }
-        //     ),
-        //     10.0,
-        //     y,
-        //     20.0,
-        //     YELLOW,
-        // );
-        //
-        // y += step;
+        let recipients = connected.saturating_sub(1) as u64;
+        let expected_msg_recv = msg_sent.saturating_mul(recipients);
+        let expected_bytes_recv = bytes_sent.saturating_mul(recipients);
+
+        let msg_loss_pct = if expected_msg_recv > 0 {
+            expected_msg_recv
+                .saturating_sub(msg_recv)
+                .saturating_mul(100)
+                / expected_msg_recv
+        } else {
+            0
+        };
+
+        draw_text(
+            &format!("Msg Loss: {}%", msg_loss_pct),
+            10.0,
+            y,
+            20.0,
+            YELLOW,
+        );
+
+        y += step;
+
+        let byte_loss_pct = if expected_bytes_recv > 0 {
+            expected_bytes_recv
+                .saturating_sub(bytes_recv)
+                .saturating_mul(100)
+                / expected_bytes_recv
+        } else {
+            0
+        };
+
+        draw_text(
+            &format!("Byte Loss: {}%", byte_loss_pct),
+            10.0,
+            y,
+            20.0,
+            YELLOW,
+        );
+
+        y += step;
 
         // Serialize fails
         draw_text(

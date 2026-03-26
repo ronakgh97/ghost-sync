@@ -289,9 +289,10 @@ fn handle_command(
             for room_id in handle.get_room_ids() {
                 if let Some(lens) = handle.get_room_channel_lens(&room_id) {
                     if !lens.is_empty() {
-                        response.push_str(&format!("\n{} channel depths:", room_id));
+                        response.push_str("\n\nchannel depths");
+                        response.push_str(&format!("\nroom_id={}", room_id));
                         for (id, len) in lens {
-                            response.push_str(&format!("\n  {}: {}", &id.to_string()[..8], len));
+                            response.push_str(&format!("\nclient_id={}: {}", &id.to_string(), len));
                         }
                     }
                 }

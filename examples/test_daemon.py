@@ -45,13 +45,13 @@ def main():
         print(f"Room count: {room_count}")
 
         print("> CREATE_ROOM foo-bar-room")
-        print(send_cmd(sock, "CREATE_ROOM\ntest-room\n"))
+        print(send_cmd(sock, "CREATE_ROOM\nfoo-bar-room\n"))
 
         print("> ROOM_CLIENTS test-room")
         print(send_cmd(sock, "ROOM_CLIENTS\ntest-room\n"))
 
         print("> DELETE_ROOM foo-bar-room")
-        print(send_cmd(sock, "DELETE_ROOM\ntest-room\n"))
+        print(send_cmd(sock, "DELETE_ROOM\nfoo-bar-room\n"))
 
         print("> METRICS")
         print(send_cmd(sock, "METRICS\n"))

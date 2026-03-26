@@ -42,7 +42,8 @@ where
     Ok(Bytes::from(payload))
 }
 
-/// Write a raw byte slice as a length-prefixed frame.
+/// Write a raw byte slice as a length-prefixed frame to tcp buffer
+/// Flushes on every writes btw
 #[inline(always)]
 pub async fn write_frame_raw<W>(writer: &mut W, payload: Bytes) -> Result<()>
 where
