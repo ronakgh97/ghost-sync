@@ -6,6 +6,7 @@ use rand::{RngExt, SeedableRng};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
+use tokio::time::timeout;
 
 /// Helper: start a server on a random port with a "test" room.
 /// Returns (ServerHandle, port).
@@ -681,4 +682,20 @@ async fn client_metadata_typed() {
 
     let name = handle.with_client_meta(&client_id, |m: &ClientMeta| m.username.clone());
     assert_eq!(name, Some("alice".to_string()));
+}
+
+#[tokio::test]
+async fn test_echo_test() {
+    let (_, port) = start_server().await;
+    let mut client = Client::connect(&format!("127.0.0.1:{}", port))
+        .await
+        .unwrap();
+    client.echo_test(b"echotestechotest").await.unwrap();
+    // Verify it is received back from server immediately
+    match timeout(Duration::from_millis(100), client.recv()).await {
+        Ok(Ok(Some(ServerEvent::EchoTest { data }))) => {
+            assert_eq!(data, b"echotestechotest".as_slice());
+        }
+        something_else => panic!("expected EchoTest, got: {:?}", something_else),
+    }
 }

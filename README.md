@@ -92,4 +92,4 @@ TODO
   library for
   networking only
 
-![Domain Expansion](pokemon-trio-domain.jpg)
+![Domain Expansion](Groudon-Rayquaza-Kyogre.jpg)

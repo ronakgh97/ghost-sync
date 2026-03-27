@@ -63,7 +63,6 @@
 //! ```
 
 #![allow(deprecated)]
-
 mod client;
 mod handler;
 pub mod log;

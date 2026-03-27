@@ -117,6 +117,17 @@ impl Room {
         }
     }
 
+    /// Send pre-serialized bytes to a specific client.
+    ///
+    /// Useful when dispatching the same payload to selected recipients without
+    /// repeated serialization.
+    #[inline]
+    pub async fn send_raw_to(&self, id: &Uuid, payload: Bytes) {
+        if let Some(tx) = self.clients.get(id) {
+            let _ = tx.try_send(payload);
+        }
+    }
+
     /// Get all client IDs in this room.
     #[inline]
     pub fn client_ids(&self) -> Vec<Uuid> {

@@ -41,6 +41,15 @@ impl Client {
         self.send(&msg).await
     }
 
+    /// An Echo check that can be performed at any time to verify the connection is alive and measure latency.
+    /// Prefers raw bytes to avoid serialization overhead and perform after [`Client::join`], limit at `max_payload`
+    pub async fn echo_test(&mut self, data: &[u8]) -> Result<(), SyncError> {
+        let msg = ClientWire::EchoTest {
+            data: data.to_vec(),
+        };
+        self.send(&msg).await
+    }
+
     /// Leave the current room.
     pub async fn leave(&mut self) -> Result<(), SyncError> {
         self.send(&ClientWire::LeaveRoom).await
@@ -112,6 +121,9 @@ impl Client {
             ServerWire::Error(msg) => ServerEvent::Error(msg),
             ServerWire::Broadcast { sender_id, data } => ServerEvent::Broadcast {
                 sender_id,
+                data: Bytes::from(data),
+            },
+            ServerWire::EchoTest { data } => ServerEvent::EchoTest {
                 data: Bytes::from(data),
             },
             // Ping/Pong are handled internally before reaching here

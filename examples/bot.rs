@@ -194,7 +194,8 @@ async fn bot_loop(map: BotMap, bot_index: usize) {
                         eprintln!("Bot {} disconnected", self_id);
                         map.remove(&self_id);
                         break;
-                    }
+                    },
+                    Ok(Some(ServerEvent::EchoTest { .. })) => {}
                 }
             }
         }

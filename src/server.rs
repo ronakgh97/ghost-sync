@@ -488,6 +488,12 @@ impl Server {
         write_tx: &mpsc::Sender<Bytes>,
     ) -> Result<()> {
         match msg {
+            ClientWire::EchoTest { data } => {
+                // Relay back the echo
+                let echo = ServerWire::EchoTest { data };
+                self.send_to_client(client_id, write_tx, &echo).await;
+            }
+
             ClientWire::JoinRoom { room_id } => {
                 // Get client addr for the hook
                 let addr = match self.clients.get(&client_id) {

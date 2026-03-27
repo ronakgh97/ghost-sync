@@ -1,12 +1,12 @@
 use std::any::Any;
-use std::sync::Mutex;
+use std::sync::RwLock;
 
 /// Typed metadata storage for rooms and clients.
 ///
 /// Each room and client holds exactly one metadata blob — a user-defined
 /// struct. The library does not interpret metadata.
 pub struct Storage {
-    inner: Mutex<Option<Box<dyn Any + Send + Sync + 'static>>>,
+    inner: RwLock<Option<Box<dyn Any + Send + Sync + 'static>>>,
 }
 
 impl Storage {
@@ -14,14 +14,14 @@ impl Storage {
     #[inline]
     pub fn new() -> Self {
         Self {
-            inner: Mutex::new(None),
+            inner: RwLock::new(None),
         }
     }
 
     /// Store a typed value. Replaces any previous value.
     #[inline]
     pub fn set<T: Any + Send + Sync + 'static>(&self, value: T) {
-        *self.inner.lock().unwrap() = Some(Box::new(value));
+        *self.inner.write().unwrap() = Some(Box::new(value));
     }
 
     /// Read the stored value via a callback.
@@ -33,7 +33,7 @@ impl Storage {
     /// no `Clone` required.
     #[inline]
     pub fn get<T: Any + Send + Sync + 'static, R>(&self, f: impl FnOnce(&T) -> R) -> Option<R> {
-        let guard = self.inner.lock().unwrap();
+        let guard = self.inner.read().unwrap();
         let any_ref = guard.as_ref()?;
         let typed = any_ref.downcast_ref::<T>()?;
         Some(f(typed))
@@ -44,14 +44,14 @@ impl Storage {
     /// Returns `None` if no value is set or the type doesn't match.
     #[inline]
     pub fn take<T: Any + Send + Sync + 'static>(&self) -> Option<T> {
-        let any_box = self.inner.lock().unwrap().take()?;
+        let any_box = self.inner.write().unwrap().take()?;
         any_box.downcast::<T>().ok().map(|boxed| *boxed)
     }
 
     /// Check if a value is set.
     #[inline]
     pub fn is_set(&self) -> bool {
-        self.inner.lock().unwrap().is_some()
+        self.inner.read().unwrap().is_some()
     }
 }
 

@@ -11,6 +11,7 @@ pub enum ClientWire {
     Ping,
     Pong,
     Broadcast { data: Vec<u8> },
+    EchoTest { data: Vec<u8> },
 }
 
 /// Messages the server sends to clients.
@@ -23,11 +24,13 @@ pub enum ServerWire {
     Pong,
     Error(String),
     Broadcast { sender_id: Uuid, data: Vec<u8> },
+    EchoTest { data: Vec<u8> },
 }
 
 #[allow(rustdoc::private_intra_doc_links)]
 /// Client-facing event (clean API over [`ServerWire`])
 /// Events the client receives from the server.
+#[derive(Debug)]
 pub enum ServerEvent {
     /// Room join confirmed.
     Joined { client_id: Uuid, room_id: String },
@@ -39,6 +42,8 @@ pub enum ServerEvent {
     Error(String),
     /// Relayed data from a peer.
     Broadcast { sender_id: Uuid, data: Bytes },
+    /// Health Echo Check from server
+    EchoTest { data: Bytes },
 }
 
 /// Server configuration.
@@ -80,7 +85,7 @@ impl Default for ServerConfig {
     }
 }
 
-// Errors
+/// Errors that can occur during client-server communication and protocol handling.
 pub enum SyncError {
     PayloadTooLarge { size: usize, max: usize },
     IdleTimeout,

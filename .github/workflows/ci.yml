@@ -79,7 +79,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Build documentation
-        run: cargo doc --no-deps
+        run: cargo doc --no-deps --release
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
