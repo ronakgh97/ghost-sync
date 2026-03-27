@@ -60,17 +60,23 @@ game-server = { git = "https://github.com/ronakgh97/ghost-sync" }
 
 ![Bot-test](test-demo.gif)
 
-- Tick rate: 40 hz
-- Bot-client: 144
+- Tick rate: 12 hz
+- Bot-client: 128
 
 `N * R msg/second for each broadcast, so (N - 1) * (N * R) msg/second in total broadcast`
 
-_That's 823,680 msg/second with 512 mb buffer channel_
+_That's 195,072 msg/second with 512 mb buffer channel_
+
+> NOTE: This is performed on single machine, so backpressure warns are excepted, as if even clients is slightly slower
+> than server, the writer channel buffer starts to fill up fast and drop frames `(frames drop are negligible, since its
+> on localhost - less latency)` which is expected behavior, not a bug due to test env &
+> synthetic traffic.
 
 Resources
 
-- (https://github.com/rumaniel/Awesome-Game-Networking)
-- (https://www.gabrielgambetta.com/client-server-game-architecture.html)
+- https://github.com/rumaniel/Awesome-Game-Networking
+- https://www.gabrielgambetta.com/client-server-game-architecture.html
+- https://medium.com/@jayphelps/backpressure-explained-the-flow-of-data-through-software-2350b3e77ce7
 
 TODO
 
@@ -82,3 +88,8 @@ TODO
   etc.)
 - Fixed the DAMN BACKPRESSURE, CHANNEL GETS FULL AND THEN EVERYTHING BLOWS UP
 - Somehow increase TCP write throughput, the only bottleneck right now is TCP write, which is fucking I/O bound!!
+- Hooks for authoritative server, so that users can implement their own game logic and state management, and use this
+  library for
+  networking only
+
+![Domain Expansion](pokemon-trio-domain.jpg)

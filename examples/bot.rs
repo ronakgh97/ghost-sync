@@ -11,8 +11,8 @@ use wincode::{SchemaRead, SchemaWrite};
 
 const ADDR: &str = "127.0.0.1:7777";
 const ROOM: &str = "test-room";
-const BOT_COUNT: usize = 12;
-const TICK_RATE: u64 = 24;
+const BOT_COUNT: usize = 128;
+const TICK_RATE: u64 = 12;
 const MAX_SPEED: f32 = 400.0;
 const SCREEN: f32 = 600.0;
 
