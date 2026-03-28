@@ -34,9 +34,17 @@ impl Client {
     }
 
     /// Join a room. If room does not exist, returns [`SyncError::RoomNotFound`]
-    pub async fn join(&mut self, room_id: &str) -> Result<(), SyncError> {
-        let msg = ClientWire::JoinRoom {
-            room_id: room_id.into(),
+    pub async fn join(&mut self, room_id: &str, data: Option<&[u8]>) -> Result<(), SyncError> {
+        let msg = if let Some(data) = data {
+            ClientWire::JoinRoom {
+                room_id: room_id.into(),
+                data: data.to_vec(),
+            }
+        } else {
+            ClientWire::JoinRoom {
+                room_id: room_id.into(),
+                data: Vec::new(),
+            }
         };
         self.send(&msg).await
     }

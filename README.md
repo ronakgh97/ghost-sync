@@ -58,7 +58,7 @@ Usage (I don't like release cycles and versioning, so just use local)
 game-server = { git = "https://github.com/ronakgh97/ghost-sync" }
 ```
 
-![Bot-test](test-demo.gif)
+![Bot-test](assets/test-demo.gif)
 
 - Tick rate: 12 hz
 - Bot-client: 128
@@ -92,4 +92,4 @@ TODO
   library for
   networking only
 
-![Domain Expansion](Groudon-Rayquaza-Kyogre.jpg)
+![Domain Expansion](assets/Groudon-Rayquaza-Kyogre.jpg)

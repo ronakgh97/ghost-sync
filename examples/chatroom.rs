@@ -25,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let mut client = Client::connect(addr.as_str()).await?;
-    client.join("chatroom").await?;
+    client.join("chatroom", None).await?;
 
     // Wait for join confirmation
     match client.recv().await? {

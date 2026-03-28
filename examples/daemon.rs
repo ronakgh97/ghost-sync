@@ -1,4 +1,5 @@
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 use dashmap::DashMap;
 use ghost_sync::{info, warn, Server, ServerHandle, ServerHandler, Uuid};
 use std::net::SocketAddr;
@@ -61,7 +62,7 @@ impl ServerHandler for DaemonHandler {
         true
     }
 
-    fn on_join(&self, client_id: Uuid, room_id: &str, addr: SocketAddr) -> bool {
+    fn on_join(&self, client_id: Uuid, room_id: &str, addr: SocketAddr, _data: &[u8]) -> bool {
         info!("Client {} ({}) joined room '{}'", client_id, addr, room_id);
         true
     }
@@ -211,7 +212,50 @@ async fn handle_control_connection(
         }
     }
 }
-
+/// API Ref:
+///
+/// LIST_ROOM -> {
+/// OK
+/// {room-id},{client-id}
+/// {room-id},{client-id}
+/// ...
+/// }
+///
+/// CREATE_ROOM -> {
+/// OK
+/// {room-id}
+/// }
+///
+/// DELETE_ROOM -> {
+/// OK
+/// {room-id}
+/// }
+///
+/// KICK_CLIENT -> {
+/// OK
+/// {client-id}
+/// }
+///
+/// ROOM_CLIENTS -> {
+/// OK
+/// {room-id}
+/// {client-id}
+/// {client-id}
+/// ...
+/// }
+///
+/// METRICS -> {
+/// OK
+/// {total-connections}
+/// {uptime-hrs}
+/// {total-room}
+/// {total-clients}
+///
+/// {client-id},{channel-queue-len}
+/// {client-id},{channel-queue-len}
+/// ...
+/// }
+///
 #[inline(always)]
 fn handle_command(
     cmd: &ControlCmd,
@@ -224,14 +268,14 @@ fn handle_command(
             let mut response = String::from("OK\n");
             for room_id in handle.get_room_ids() {
                 let clients = handle.room_client_count(&room_id).unwrap_or(0);
-                response.push_str(&format!("{}: {} clients\n", room_id, clients));
+                response.push_str(&format!("{},{}\n", room_id, clients));
             }
             response
         }
 
         "CREATE_ROOM" => match cmd.require_arg(0) {
             Ok(room_id) => match handle.create_room(room_id) {
-                Ok(()) => format!("OK\nRoom '{}' created", room_id),
+                Ok(()) => format!("OK\n{}", room_id),
                 Err(e) => format!("ERROR\n{}", e),
             },
             Err(e) => format!("ERROR\n{}", e),
@@ -240,7 +284,7 @@ fn handle_command(
         "DELETE_ROOM" => match cmd.require_arg(0) {
             Ok(room_id) => {
                 if handle.delete_room(room_id) {
-                    format!("OK\nRoom '{}' deleted", room_id)
+                    format!("OK\n{}", room_id)
                 } else {
                     format!("ERROR\nRoom '{}' not found", room_id)
                 }
@@ -252,7 +296,7 @@ fn handle_command(
             Ok(client_id_str) => match Uuid::parse_str(client_id_str) {
                 Ok(client_id) => {
                     if handle.kick_client(&client_id) {
-                        format!("OK\nClient {} kicked", client_id)
+                        format!("OK\n{}", client_id)
                     } else {
                         "ERROR\nClient not found or not in a room".to_string()
                     }
@@ -265,7 +309,7 @@ fn handle_command(
         "ROOM_CLIENTS" => match cmd.require_arg(0) {
             Ok(room_id) => match handle.get_room_clients(room_id) {
                 Some(clients) => {
-                    let mut response = format!("OK\nClients in '{}':\n", room_id);
+                    let mut response = format!("OK\n{}\n", room_id);
                     for client in clients {
                         response.push_str(&format!("{}\n", client));
                     }
@@ -278,21 +322,20 @@ fn handle_command(
 
         "METRICS" => {
             let mut response = format!(
-                "OK\nconnections={}\nrooms={}\nclients={}\nuptime={}hrs",
+                "OK\n{}\n{}\n{}\n{}\n",
                 daemon.metrics.total_connections.load(Ordering::Relaxed),
+                daemon.metrics.start_time.elapsed().as_secs() / 3600,
                 handle.room_count(),
                 handle.get_client_count(),
-                daemon.metrics.start_time.elapsed().as_secs() / 3600
             );
 
-            // Show channel queue depths for all rooms
+            // Show channel queue depths for all clients
             for room_id in handle.get_room_ids() {
                 if let Some(lens) = handle.get_room_channel_lens(&room_id) {
                     if !lens.is_empty() {
-                        response.push_str("\n\nchannel depths");
-                        response.push_str(&format!("\nroom_id={}", room_id));
+                        response.push('\n');
                         for (id, len) in lens {
-                            response.push_str(&format!("\nclient_id={}: {}", &id.to_string(), len));
+                            response.push_str(&format!("{},{}\n", &id.to_string(), len));
                         }
                     }
                 }
@@ -306,52 +349,75 @@ fn handle_command(
 }
 
 // TODO: More daemon feature...
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread", worker_threads = 16)]
 async fn main() -> Result<()> {
-    info!("Starting Game Server Daemon");
+    let args = Cliargs::parse();
+    match args.command {
+        Some(Command::Run {
+            game_addr,
+            api_addr,
+            channel_capacity,
+        }) => {
+            let game_server_ip = game_addr.unwrap_or_else(|| "0.0.0.0:7777".to_string());
 
-    let daemon = Arc::new(Daemon::new());
+            let control_addr = match api_addr {
+                Some(control_addr) => control_addr.parse::<SocketAddr>()?,
+                None => SocketAddr::from(([0, 0, 0, 0], 7878)),
+            };
 
-    let tcp_server = Server::builder()
-        .bind("0.0.0.0:7777")
-        .max_clients(1024)
-        .max_payload(256 * 1024)
-        .idle_timeout(Duration::from_secs(25))
-        .ping_interval(Duration::from_secs(15))
-        .channel_capacity(1024 * 1024 * 1024)
-        .handler(DaemonHandler::new(daemon.clone()))
-        .build();
+            let channel_capacity = channel_capacity.unwrap_or(256 * 1024 * 1024);
 
-    let server_handle = Arc::new(tcp_server.run().await?);
-    info!("Game relay server listening on 0.0.0.0:7777");
+            info!("Starting Game Server Daemon");
 
-    for i in 1..=128 {
-        server_handle.create_room(&format!("room-{}", i))?;
-    }
+            let daemon = Arc::new(Daemon::new());
 
-    server_handle.create_room("test-room")?;
-    server_handle.set_room_meta(
-        "test-room",
-        RoomMeta {
-            foo: "foo".to_string(),
-            bar: "bar".to_string(),
-        },
-    );
+            let tcp_server = Server::builder()
+                .bind(&game_server_ip)
+                .max_clients(1024)
+                .max_payload(256 * 1024)
+                .idle_timeout(Duration::from_secs(25))
+                .ping_interval(Duration::from_secs(15))
+                .channel_capacity(channel_capacity)
+                .handler(DaemonHandler::new(daemon.clone()))
+                .build();
 
-    let ctrl_listener = TcpListener::bind("0.0.0.0:8888").await?;
-    info!("Control server listening on 0.0.0.0:8888");
+            let gameserver_handle = Arc::new(tcp_server.run().await?);
+            info!("Game relay server listening on {}", &game_server_ip);
 
-    let ctrl_handle = tokio::spawn(run_control_server(
-        ctrl_listener,
-        daemon,
-        server_handle.clone(),
-    ));
+            for i in 1..=8 {
+                gameserver_handle.create_room(&format!("room-{}", i))?;
+            }
 
-    info!("Game Server Daemon is running. Press Ctrl+C to stop...");
-    shutdown_signal().await;
-    server_handle.shutdown().await;
-    ctrl_handle.abort();
-    info!("Game Server Daemon stopped.");
+            gameserver_handle.create_room("test-room")?;
+            gameserver_handle.set_room_meta(
+                "test-room",
+                RoomMeta {
+                    foo: "foo".to_string(),
+                    bar: "bar".to_string(),
+                },
+            );
+
+            let ctrl_listener = TcpListener::bind(control_addr).await?;
+            info!("Control server listening on {}", control_addr);
+
+            let ctrl_handle = tokio::spawn(run_control_server(
+                ctrl_listener,
+                daemon,
+                gameserver_handle.clone(),
+            ));
+
+            info!("Game Server Daemon is running. Press Ctrl+C to stop...");
+
+            shutdown_signal().await;
+            gameserver_handle.shutdown().await;
+            ctrl_handle.abort();
+            info!("Game Server Daemon stopped.");
+        }
+        None => {
+            ascii().await;
+        }
+    };
+
     Ok(())
 }
 
@@ -377,4 +443,47 @@ async fn shutdown_signal() {
         _ = ctrl_c => {},
         _ = terminate => {},
     }
+}
+
+async fn ascii() {
+    let r = "
+      ▄▄                                                       ▄▄
+      ██                 ██                                    ██
+▄████ ████▄ ▄███▄ ▄█▀▀▀ ▀██▀▀ ▄█▀▀▀ ██ ██ ████▄ ▄████       ▄████  ▀▀█▄ ▄█▀█▄ ███▄███▄ ▄███▄ ████▄
+██ ██ ██ ██ ██ ██ ▀███▄  ██   ▀███▄ ██▄██ ██ ██ ██    ▀▀▀▀▀ ██ ██ ▄█▀██ ██▄█▀ ██ ██ ██ ██ ██ ██ ██
+▀████ ██ ██ ▀███▀ ▄▄▄█▀  ██   ▄▄▄█▀  ▀██▀ ██ ██ ▀████       ▀████ ▀█▄██ ▀█▄▄▄ ██ ██ ██ ▀███▀ ██ ██
+   ██                                 ██
+ ▀▀▀                                ▀▀▀
+";
+    println!("{}", r);
+}
+
+#[derive(Parser)]
+#[command(
+    name = "gs-daemon",
+    version = "1.0.0-beta",
+    about = "Generic Game Server Daemon using `ghost_sync`",
+    long_about = None
+)]
+struct Cliargs {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Run daemon server
+    Run {
+        /// Addr to bind inner game server to
+        #[clap(short, long)]
+        game_addr: Option<String>,
+
+        /// Addr to bind control layer to
+        #[clap(short, long)]
+        api_addr: Option<String>,
+
+        /// Channel bandwidth limit for each client (in bytes). Default is 256MB.
+        #[clap(short, long)]
+        channel_capacity: Option<usize>,
+    },
 }

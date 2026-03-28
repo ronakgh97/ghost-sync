@@ -103,7 +103,7 @@ async fn bot_loop(map: BotMap, bot_index: usize) {
         }
     };
 
-    if let Err(e) = client.join(ROOM).await {
+    if let Err(e) = client.join(ROOM, None).await {
         eprintln!("Bot join error: {e}");
         return;
     }

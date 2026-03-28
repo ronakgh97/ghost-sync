@@ -55,7 +55,7 @@ async fn start_server_with(
 async fn connect_and_join() {
     let (_handle, port) = start_server().await;
     let mut client = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    client.join("test").await.unwrap();
+    client.join("test", None).await.unwrap();
 
     match client.recv().await.unwrap() {
         Some(ServerEvent::Joined { room_id, .. }) => assert_eq!(room_id, "test"),
@@ -67,7 +67,7 @@ async fn connect_and_join() {
 async fn join_nonexistent_room() {
     let (_handle, port) = start_server().await;
     let mut client = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    client.join("nonexistent").await.unwrap();
+    client.join("nonexistent", None).await.unwrap();
 
     match client.recv().await.unwrap() {
         Some(ServerEvent::Error(msg)) => assert!(msg.contains("room not found")),
@@ -80,12 +80,12 @@ async fn broadcast_relay() {
     let (_handle, port) = start_server().await;
 
     let mut a = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    a.join("test").await.unwrap();
+    a.join("test", None).await.unwrap();
     // Drain Joined
     let _ = a.recv().await.unwrap();
 
     let mut b = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    b.join("test").await.unwrap();
+    b.join("test", None).await.unwrap();
     // Drain Joined
     let _ = b.recv().await.unwrap();
 
@@ -126,11 +126,11 @@ async fn broadcast_isolation() {
     let _handle = server.run().await.unwrap();
 
     let mut a = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    a.join("room_a").await.unwrap();
+    a.join("room_a", None).await.unwrap();
     let _ = a.recv().await.unwrap();
 
     let mut b = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    b.join("room_b").await.unwrap();
+    b.join("room_b", None).await.unwrap();
     let _ = b.recv().await.unwrap();
 
     // A broadcasts in room_a
@@ -149,11 +149,11 @@ async fn leave_room() {
     let (_handle, port) = start_server().await;
 
     let mut a = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    a.join("test").await.unwrap();
+    a.join("test", None).await.unwrap();
     let _ = a.recv().await.unwrap(); // Joined
 
     let mut b = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    b.join("test").await.unwrap();
+    b.join("test", None).await.unwrap();
     let _ = b.recv().await.unwrap(); // Joined
 
     // A should see PlayerJoined for B
@@ -174,11 +174,11 @@ async fn client_disconnect_cleanup() {
     let (_handle, port) = start_server().await;
 
     let mut a = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    a.join("test").await.unwrap();
+    a.join("test", None).await.unwrap();
     let _ = a.recv().await.unwrap(); // Joined
 
     let mut b = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    b.join("test").await.unwrap();
+    b.join("test", None).await.unwrap();
     let _ = b.recv().await.unwrap(); // Joined
 
     // A sees B join
@@ -224,7 +224,7 @@ async fn ping_pong_internal() {
     .await;
 
     let mut client = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    client.join("test").await.unwrap();
+    client.join("test", None).await.unwrap();
     let _ = client.recv().await.unwrap(); // Joined
 
     // Advance time through 3 ping cycles and connection should survive
@@ -251,7 +251,7 @@ async fn idle_timeout_disconnects() {
     .await;
 
     let mut client = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    client.join("test").await.unwrap();
+    client.join("test", None).await.unwrap();
     let _ = client.recv().await.unwrap(); // Joined
 
     // Advance time past idle timeout
@@ -284,7 +284,7 @@ async fn ping_timeout_disconnects() {
     .await;
 
     let mut client = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    client.join("test").await.unwrap();
+    client.join("test", None).await.unwrap();
     let _ = client.recv().await.unwrap();
 
     // Advance through 2 ping cycles, yielding between each so the
@@ -333,7 +333,7 @@ async fn on_connect_reject() {
         result.is_err() || {
             // Connection established but immediately closed
             let mut c = result.unwrap();
-            c.join("test").await.is_err() || matches!(c.recv().await, Ok(None))
+            c.join("test", None).await.is_err() || matches!(c.recv().await, Ok(None))
         }
     );
 }
@@ -370,12 +370,12 @@ async fn backpressure_fires_on_slow_client() {
 
     // Connect A reads normally
     let mut a = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    a.join("test").await.unwrap();
+    a.join("test", None).await.unwrap();
     let _ = a.recv().await.unwrap(); // Joined
 
     // Connect B will stop reading after join
     let mut b = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    b.join("test").await.unwrap();
+    b.join("test", None).await.unwrap();
     let _ = b.recv().await.unwrap(); // Joined
 
     // A sees B join
@@ -430,7 +430,7 @@ async fn runtime_room_management() {
 
     // Client can join runtime-created room
     let mut client = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    client.join("match-1").await.unwrap();
+    client.join("match-1", None).await.unwrap();
     match client.recv().await.unwrap() {
         Some(ServerEvent::Joined { room_id, .. }) => assert_eq!(room_id, "match-1"),
         _ => panic!("expected Joined"),
@@ -486,7 +486,7 @@ async fn load_worker(
                 loop {
                     tokio::select! {
                         _ = &mut drain_deadline => break,
-                        recv_result = tokio::time::timeout(Duration::from_millis(25), client.recv()) => {
+                        recv_result = tokio::time::timeout(Duration::from_millis(50), client.recv()) => {
                             match recv_result {
                                 Ok(Ok(Some(_))) => {}
                                 Ok(Ok(None)) => break,
@@ -558,7 +558,7 @@ async fn server_load_test() {
     let mut clients = Vec::with_capacity(LOAD_CLIENTS);
     for _ in 0..LOAD_CLIENTS {
         let mut client = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-        client.join("load_test").await.unwrap();
+        client.join("load_test", None).await.unwrap();
         let _ = client.recv().await.unwrap();
         clients.push(client);
     }
@@ -668,7 +668,7 @@ async fn room_metadata_typed() {
 async fn client_metadata_typed() {
     let (handle, port) = start_server().await;
     let mut client = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
-    client.join("test").await.unwrap();
+    client.join("test", None).await.unwrap();
     let _ = client.recv().await.unwrap(); // Joined
 
     let client_id = client.client_id().unwrap();

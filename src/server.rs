@@ -494,7 +494,7 @@ impl Server {
                 self.send_to_client(client_id, write_tx, &echo).await;
             }
 
-            ClientWire::JoinRoom { room_id } => {
+            ClientWire::JoinRoom { room_id, data } => {
                 // Get client addr for the hook
                 let addr = match self.clients.get(&client_id) {
                     Some(state) => state.addr,
@@ -509,7 +509,7 @@ impl Server {
                 }
 
                 // Handler hook — can reject the join
-                if !self.handler.on_join(client_id, &room_id, addr) {
+                if !self.handler.on_join(client_id, &room_id, addr, &data) {
                     let err = ServerWire::Error("join rejected".into());
                     self.send_to_client(client_id, write_tx, &err).await;
                     return Ok(());

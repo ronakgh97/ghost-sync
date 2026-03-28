@@ -6,7 +6,7 @@ use wincode::{SchemaRead, SchemaWrite};
 /// Messages clients send to the server.
 #[derive(SchemaWrite, SchemaRead)]
 pub enum ClientWire {
-    JoinRoom { room_id: String },
+    JoinRoom { room_id: String, data: Vec<u8> },
     LeaveRoom,
     Ping,
     Pong,
