@@ -291,7 +291,7 @@ impl Server {
     /// a [`ServerHandle`] for shutdown and runtime control.
     pub async fn run(self) -> std::io::Result<ServerHandle> {
         let listener = TcpListener::bind(&self.config.bind_addr).await?;
-        info!("listening on {}", self.config.bind_addr);
+        info!("Server listening on {}", self.config.bind_addr);
 
         let (shutdown_tx, _) = broadcast::channel::<()>(4);
         let handle = ServerHandle {
@@ -508,9 +508,12 @@ impl Server {
                     return Ok(());
                 }
 
-                // Handler hook — can reject the join
-                if !self.handler.on_join(client_id, &room_id, addr, &data) {
-                    let err = ServerWire::Error("join rejected".into());
+                // Handler hook — can reject the join with an optional custom reason
+                let (allow_join, reject_reason) =
+                    self.handler.on_join(client_id, &room_id, addr, &data);
+                if !allow_join {
+                    let reason = reject_reason.unwrap_or_else(|| "join rejected".to_string());
+                    let err = ServerWire::Error(reason);
                     self.send_to_client(client_id, write_tx, &err).await;
                     return Ok(());
                 }

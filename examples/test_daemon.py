@@ -34,14 +34,14 @@ def main():
     sock.settimeout(5)
 
     try:
-        sock.connect(("127.0.0.1", 8888))
+        sock.connect(("127.0.0.1", 7878))
 
         print("> METRICS")
         print(send_cmd(sock, "METRICS\n"))
 
         print("> LIST_ROOMS")
         resp = send_cmd(sock, "LIST_ROOMS\n")
-        room_count = resp.count("clients\n")
+        room_count = resp.count("\n")
         print(f"Room count: {room_count}")
 
         print("> CREATE_ROOM foo-bar-room")

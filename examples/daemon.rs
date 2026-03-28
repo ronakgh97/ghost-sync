@@ -62,9 +62,16 @@ impl ServerHandler for DaemonHandler {
         true
     }
 
-    fn on_join(&self, client_id: Uuid, room_id: &str, addr: SocketAddr, _data: &[u8]) -> bool {
+    // TODO: Use data_payload to implement public/private rooms feature
+    fn on_join(
+        &self,
+        client_id: Uuid,
+        room_id: &str,
+        addr: SocketAddr,
+        _data: &[u8],
+    ) -> (bool, Option<String>) {
         info!("Client {} ({}) joined room '{}'", client_id, addr, room_id);
-        true
+        (true, None)
     }
 
     fn on_leave(&self, client_id: Uuid, room_id: &str) {
@@ -349,6 +356,7 @@ fn handle_command(
 }
 
 // TODO: More daemon feature...
+// TODO: Use Admin token to manage access control for control API
 #[tokio::main(flavor = "multi_thread", worker_threads = 16)]
 async fn main() -> Result<()> {
     let args = Cliargs::parse();
@@ -384,18 +392,7 @@ async fn main() -> Result<()> {
             let gameserver_handle = Arc::new(tcp_server.run().await?);
             info!("Game relay server listening on {}", &game_server_ip);
 
-            for i in 1..=8 {
-                gameserver_handle.create_room(&format!("room-{}", i))?;
-            }
-
-            gameserver_handle.create_room("test-room")?;
-            gameserver_handle.set_room_meta(
-                "test-room",
-                RoomMeta {
-                    foo: "foo".to_string(),
-                    bar: "bar".to_string(),
-                },
-            );
+            tokio::spawn(cleanup_job(gameserver_handle.clone()));
 
             let ctrl_listener = TcpListener::bind(control_addr).await?;
             info!("Control server listening on {}", control_addr);
@@ -405,6 +402,15 @@ async fn main() -> Result<()> {
                 daemon,
                 gameserver_handle.clone(),
             ));
+
+            gameserver_handle.create_room("test-room")?;
+            gameserver_handle.set_room_meta(
+                "test-room",
+                RoomMeta {
+                    foo: "foo".to_string(),
+                    bar: "bar".to_string(),
+                },
+            );
 
             info!("Game Server Daemon is running. Press Ctrl+C to stop...");
 
@@ -419,6 +425,27 @@ async fn main() -> Result<()> {
     };
 
     Ok(())
+}
+
+async fn cleanup_job(handle: Arc<ServerHandle>) -> Result<()> {
+    loop {
+        tokio::time::sleep(Duration::from_mins(12)).await;
+        let mut empty_room = vec![];
+        {
+            for room_id in handle.get_room_ids() {
+                if let Some(clients) = handle.get_room_clients(&room_id) {
+                    if clients.is_empty() {
+                        empty_room.push(room_id);
+                    }
+                }
+            }
+        }
+        {
+            for id in empty_room {
+                handle.delete_room(&id);
+            }
+        }
+    }
 }
 
 async fn shutdown_signal() {

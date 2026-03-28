@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 use tokio::time::timeout;
+use uuid::Uuid;
 
 /// Helper: start a server on a random port with a "test" room.
 /// Returns (ServerHandle, port).
@@ -336,6 +337,101 @@ async fn on_connect_reject() {
             c.join("test", None).await.is_err() || matches!(c.recv().await, Ok(None))
         }
     );
+}
+
+#[tokio::test]
+async fn join_reject_reason_is_customizable() {
+    use ghost_sync::ServerHandler;
+    use std::net::SocketAddr;
+
+    struct RejectWithReason;
+    impl ServerHandler for RejectWithReason {
+        fn on_join(
+            &self,
+            _client_id: Uuid,
+            _room_id: &str,
+            _addr: SocketAddr,
+            _data: &[u8],
+        ) -> (bool, Option<String>) {
+            (false, Some("private room: bad token".to_string()))
+        }
+    }
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+
+    let server = Server::builder()
+        .bind(format!("127.0.0.1:{port}"))
+        .handler(RejectWithReason)
+        .build();
+    server.pre_create_room("test").unwrap();
+    let _handle = server.run().await.unwrap();
+
+    let mut client = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
+    client.join("test", None).await.unwrap();
+
+    match client.recv().await.unwrap() {
+        Some(ServerEvent::Error(msg)) => assert_eq!(msg, "private room: bad token"),
+        other => panic!("expected Error, got something else: {:?}", other.is_some()),
+    }
+}
+
+#[tokio::test]
+async fn test_room_visibility_example() {
+    use ghost_sync::ServerHandler;
+    use std::net::SocketAddr;
+
+    const PASSWORD: &[u8] = b"123456789";
+
+    struct RoomVisibility;
+
+    impl ServerHandler for RoomVisibility {
+        fn on_join(
+            &self,
+            _client_id: Uuid,
+            _room_id: &str,
+            _addr: SocketAddr,
+            data: &[u8],
+        ) -> (bool, Option<String>) {
+            if data != PASSWORD {
+                return (false, None);
+            }
+            (true, None)
+        }
+    }
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+
+    let server = Server::builder()
+        .bind(format!("127.0.0.1:{port}"))
+        .handler(RoomVisibility)
+        .build();
+
+    server.pre_create_room("test").unwrap();
+    let _handle = server.run().await.unwrap();
+
+    let mut bad = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
+    bad.join("test", Some(b"wrong-password")).await.unwrap();
+    match bad.recv().await.unwrap() {
+        Some(ServerEvent::Error(_)) => {}
+        other => panic!(
+            "expected Error for wrong password, got: {:?}",
+            other.is_some()
+        ),
+    }
+
+    let mut good = Client::connect(&format!("127.0.0.1:{port}")).await.unwrap();
+    good.join("test", Some(PASSWORD)).await.unwrap();
+    match good.recv().await.unwrap() {
+        Some(ServerEvent::Joined { room_id, .. }) => assert_eq!(room_id, "test"),
+        other => panic!(
+            "expected Joined for correct password, got: {:?}",
+            other.is_some()
+        ),
+    }
 }
 
 // Backpressure test

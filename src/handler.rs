@@ -27,14 +27,23 @@ pub trait ServerHandler: Send + Sync + 'static {
         true
     }
 
-    /// Called when a client requests to join a room. Return `false` to reject
-    /// the join - the client receives a "join rejected" error.
+    /// Called when a client requests to join a room.
+    ///
+    /// Return `(true, _)` to allow the join.
+    /// Return `(false, Some(reason))` to reject with a custom error message.
+    /// Return `(false, None)` to reject with the default "join rejected" message.
     ///
     /// Use this to implement private rooms (check password), max player limits (check client count)
     /// or use payload_data field to validate any sort of tokens,
     /// bans (check addr), add room_limit or any custom join logic you wish
-    fn on_join(&self, _client_id: Uuid, _room_id: &str, _addr: SocketAddr, _data: &[u8]) -> bool {
-        true
+    fn on_join(
+        &self,
+        _client_id: Uuid,
+        _room_id: &str,
+        _addr: SocketAddr,
+        _data: &[u8],
+    ) -> (bool, Option<String>) {
+        (true, None)
     }
 
     /// Called when a client leaves a room (or disconnects).
