@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -10,26 +9,44 @@ async fn main() -> Result<()> {
     let cli = Cliargs::parse();
 
     match cli.command {
-        Some(Command::Create { room, addr }) => {
+        Some(Command::Create {
+            room,
+            addr,
+            password,
+            max_player,
+        }) => {
             let room = validate_room_name(&room)?;
             let ip = addr
                 .parse::<SocketAddr>()
                 .map_err(|e| anyhow!("Invalid address: {e}"))?;
-            let created = create_room(&room, ip)
+            let created = create_room(&room, ip, password.as_deref(), max_player)
                 .await
                 .map_err(|e| anyhow!("Failed to create room: {e}"))?;
             println!("Created room: {created}");
         }
         Some(Command::List { addr }) => {
             let ip = addr.parse::<SocketAddr>()?;
-            let room_map = list_rooms(ip).await?;
-            if room_map.is_empty() {
+            let rooms = list_rooms(ip).await?;
+            if rooms.is_empty() {
                 println!("No rooms found");
             } else {
                 println!("Rooms:");
-                for (room_id, player_count) in room_map {
-                    println!("  {room_id} ({player_count} players)");
+                for room in rooms {
+                    let private_marker = if room.is_private { " [private]" } else { "" };
+                    println!(
+                        "  {} ({} players){}",
+                        room.room_id, room.players, private_marker
+                    );
                 }
+            }
+        }
+        Some(Command::Echo { payload, addr }) => {
+            let ip = addr.parse::<SocketAddr>()?;
+            let recv = echo_test(&payload, ip).await?;
+            if !recv.eq(&payload) {
+                println!("Echo mismatch! Sent: '{payload}', Received: '{recv}'");
+            } else {
+                println!("Echo successful");
             }
         }
         None => {
@@ -70,7 +87,7 @@ struct ControlAPIResponse {
     error_message: Option<String>,
 }
 
-async fn list_rooms(addr: SocketAddr) -> Result<HashMap<String, usize>> {
+async fn list_rooms(addr: SocketAddr) -> Result<Vec<RoomInfo>> {
     let response = control_command("LIST_ROOMS\n", addr).await?;
     if !response.ok {
         return Err(anyhow!(
@@ -81,18 +98,32 @@ async fn list_rooms(addr: SocketAddr) -> Result<HashMap<String, usize>> {
         ));
     }
 
-    let mut rooms = HashMap::new();
+    let mut rooms = Vec::new();
     for line in response.body_lines {
         if let Some(room) = parse_room_line(&line) {
-            rooms.insert(room.room_id, room.players);
+            rooms.push(room);
         }
     }
 
     Ok(rooms)
 }
 
-async fn create_room(room_id: &str, addr: SocketAddr) -> Result<String> {
-    let command = format!("CREATE_ROOM\n{room_id}\n");
+async fn create_room(
+    room_id: &str,
+    addr: SocketAddr,
+    password: Option<&str>,
+    max_player: Option<usize>,
+) -> Result<String> {
+    let mut command = format!("CREATE_ROOM\n{room_id}");
+    if let Some(pw) = password {
+        command.push_str(&format!("\n{pw}"));
+    } else {
+        command.push('\n');
+    }
+    if let Some(mp) = max_player {
+        command.push_str(&format!("\n{mp}"));
+    }
+    command.push('\n');
 
     let response = control_command(&command, addr).await?;
     if !response.ok {
@@ -111,18 +142,47 @@ async fn create_room(room_id: &str, addr: SocketAddr) -> Result<String> {
     Ok(room_id.to_string())
 }
 
+async fn echo_test(payload: &str, addr: SocketAddr) -> Result<String> {
+    let command = format!("ECHO_TEST\n{payload}\n");
+    let response = control_command(&command, addr).await?;
+    if !response.ok {
+        return Err(anyhow!(
+            "{}",
+            response
+                .error_message
+                .unwrap_or_else(|| "ECHO_TEST failed".to_string())
+        ));
+    }
+
+    if let Some(line) = response.body_lines.first() {
+        return Ok(line.trim().to_string());
+    }
+
+    Ok(payload.to_string())
+}
+
+#[inline]
 fn parse_room_line(line: &str) -> Option<RoomInfo> {
     // LIST_ROOMS body format from daemon API: "{room-id},{client-count}"
-    let (room_id, players) = line.split_once(',')?;
+    let (room_id, rest) = line.split_once(',')?;
     let room_id = room_id.trim();
     if room_id.is_empty() {
         return None;
     }
-    let players = players.trim().parse::<usize>().ok()?;
+
+    // Parse client count (may have trailing ",private" marker)
+    let (count_str, is_private) = if let Some((count, marker)) = rest.split_once(',') {
+        (count.trim(), marker.trim() == "private")
+    } else {
+        (rest.trim(), false)
+    };
+
+    let players = count_str.parse::<usize>().ok()?;
 
     Some(RoomInfo {
         room_id: room_id.to_string(),
         players,
+        is_private,
     })
 }
 
@@ -130,6 +190,7 @@ fn parse_room_line(line: &str) -> Option<RoomInfo> {
 struct RoomInfo {
     room_id: String,
     players: usize,
+    is_private: bool,
 }
 
 async fn control_command(command: &str, addr: SocketAddr) -> Result<ControlAPIResponse> {
@@ -212,10 +273,27 @@ enum Command {
 
         #[clap(short, long)]
         addr: String,
+
+        /// Room password (optional - creates private room if provided)
+        #[clap(short, long)]
+        password: Option<String>,
+
+        /// Maximum players allowed (optional)
+        #[clap(short = 'n', long)]
+        max_player: Option<usize>,
     },
 
     /// List all rooms
     List {
+        #[clap(short, long)]
+        addr: String,
+    },
+
+    /// Echo test - send a payload and receive it back
+    Echo {
+        /// The payload to echo
+        payload: String,
+
         #[clap(short, long)]
         addr: String,
     },

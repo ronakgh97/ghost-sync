@@ -16,16 +16,14 @@
 //!
 //! ### Server
 //! ```rust,no_run
-//! use ghost_sync::{ServerBuilder, NoopHandler, ServerConfig};
+//! use ghost_sync::{Server, NoopHandler};
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let server = ServerBuilder::new()
-//!         .bind("127.0.0.1:8080".parse().unwrap())
+//!     let server = Server::builder()
+//!         .bind("127.0.0.1:8080")
 //!         .handler(NoopHandler)
-//!         .config(ServerConfig::default())
-//!         .build()
-//!         .unwrap();
+//!         .build();
 //!
 //!     // Creates a background task running the server
 //!     let handle = server.run().await.unwrap();
@@ -37,24 +35,20 @@
 //!
 //! ### Client
 //! ```rust,no_run
-//! use ghost_sync::{ClientBuilder, ServerEvent};
+//! use ghost_sync::{Client, ServerEvent};
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     let mut client = ClientBuilder::new()
-//!         .connect("127.0.0.1:8080".parse().unwrap())
-//!         .await
-//!         .unwrap();
+//!     let mut client = Client::connect("127.0.0.1:8080").await.unwrap();
 //!
 //!     // Join a room to start receiving and sending broadcasts
-//!     client.join_room("test-room").await.unwrap();
-//!     client.broadcast(b"Hello from client!".to_vec()).await.unwrap();
+//!     client.join("test-room", None).await.unwrap();
 //!
-//!     while let Some(event) = client.recv().await {
+//!     while let Ok(Some(event)) = client.recv().await {
 //!         match event {
-//!             ServerEvent::JoinedRoom { room: _ } => println!("Joined room"),
-//!             ServerEvent::RoomBroadcast { sender: _, payload } => {
-//!                 println!("Received broadcast: {:?}", payload);
+//!             ServerEvent::Joined { client_id, room_id } => println!("Joined room: {}", room_id),
+//!             ServerEvent::Broadcast { sender_id, data } => {
+//!                 println!("Received broadcast: {:?}", data);
 //!             },
 //!             _ => {}
 //!         }
