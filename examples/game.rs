@@ -1,7 +1,13 @@
 use ::rand::rng;
 #[allow(unused_imports)]
 use ::rand::RngExt;
+use dashmap::DashMap;
+use ghost_sync::{Client, ServerEvent, Uuid};
 use macroquad::prelude::*;
+use std::env;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::LazyLock;
+use tokio::sync::mpsc;
 use wincode::{SchemaRead, SchemaWrite};
 
 #[derive(SchemaRead, SchemaWrite, Debug, Clone, Copy, PartialEq, Eq)]
@@ -225,6 +231,9 @@ enum PokemonKind {
     Articuno,
 }
 
+const SERVER_ADDR: &str = "127.0.0.1:7777";
+const ROOM_ID: &str = "test-room";
+
 /// Player state that can be broadcast over the network.
 /// This is a compact representation of the player's current
 #[allow(unused)]
@@ -239,8 +248,23 @@ struct PlayerState {
     pokemon_kind: PokemonKind,
 }
 
+/// Events that go from network task TO game thread.
+enum NetEvent {
+    /// Local player successfully joined the room
+    LocalJoin { client_id: Uuid },
+    /// A player left the room
+    RemoteLeft { client_id: Uuid },
+    /// Got broadcast from another player
+    RemoteState { sender_id: Uuid, state: PlayerState },
+    /// Network error occurred
+    Error(String),
+    /// Connection lost
+    Disconnected,
+}
+
 struct Player {
     pos: Vec2,
+    target_pos: Vec2,
     facing: Facing,
     anim_kind: AnimKind,
     frame_index: usize,
@@ -252,6 +276,7 @@ impl Player {
     fn new(pos: Vec2, pokemon_kind: PokemonKind) -> Self {
         Self {
             pos,
+            target_pos: pos,
             facing: Facing::South,
             anim_kind: AnimKind::Idle,
             frame_index: 0,
@@ -260,8 +285,7 @@ impl Player {
         }
     }
 
-    /// Form a state of local players
-    #[allow(unused)]
+    /// Form a state of local players that can be sent over the network
     fn to_state(&self) -> PlayerState {
         PlayerState {
             x: self.pos.x,
@@ -276,55 +300,189 @@ impl Player {
 
     /// Get a state from the network
     /// Can be used to smooth interpolation of remote players in client side
-    #[allow(unused)]
     fn from_state(state: &PlayerState) -> Self {
+        let pos = Vec2::new(state.x, state.y);
         Player {
-            pos: Vec2::new(state.x, state.y),
+            pos,
+            target_pos: pos,
             facing: state.facing,
             anim_kind: state.anim_kind,
-            frame_index: 0,
-            frame_timer: 0.0,
+            frame_index: state.frame_index,
+            frame_timer: state.frame_timer,
             pokemon_kind: state.pokemon_kind,
         }
     }
+
+    /// Overwrite the player state with the received state from network
+    fn apply_state(&mut self, state: &PlayerState) {
+        self.target_pos = vec2(state.x, state.y);
+        self.facing = state.facing;
+        self.anim_kind = state.anim_kind;
+        self.frame_index = state.frame_index;
+        self.frame_timer = state.frame_timer;
+        self.pokemon_kind = state.pokemon_kind;
+    }
 }
 
+/// A Master state holding all game data, including local player and remote players received from network
 struct GameState {
     local_player: Player,
-    remote_players: Vec<Player>,
+    remote_players: DashMap<Uuid, Player>,
+    self_id: Option<Uuid>,
+    state_tx: Option<mpsc::UnboundedSender<PlayerState>>,
+    net_rx: Option<mpsc::UnboundedReceiver<NetEvent>>,
+    tx_count: AtomicU64,
+    rx_count: AtomicU64,
 }
 
 impl GameState {
-    /// Start with a local player
-    fn new(local_player: Player) -> Self {
+    fn offline(local_player: Player) -> Self {
         Self {
             local_player,
-            remote_players: Vec::new(),
+            remote_players: DashMap::new(),
+            self_id: None,
+            state_tx: None,
+            net_rx: None,
+            tx_count: AtomicU64::new(0),
+            rx_count: AtomicU64::new(0),
         }
     }
 
-    /// Add a remote player for Game state to manage it
-    #[allow(unused)]
-    fn add_remote_player(&mut self, remote_player: Player) {
-        self.remote_players.push(remote_player);
+    /// Start in online mode,  connects to server, runs echo test, joins room, then returns.
+    /// BLOCKS until connection + echo test + room join all succeed.
+    async fn online(local_player: Player) -> Result<Self, String> {
+        let (state_tx, state_rx) = mpsc::unbounded_channel::<PlayerState>();
+        let (net_tx, mut net_rx) = mpsc::unbounded_channel::<NetEvent>();
+
+        // Spawn a background network thread, from here we will poll events into our local game thread via net_rx
+        // and send our state every frame via state_tx
+        ASYNC_RUNTIME.spawn(network_loop(state_rx, net_tx));
+
+        // Startup loop, runs for one EVENT only, either JOIN room or ERROR return
+        loop {
+            match net_rx.recv().await {
+                Some(NetEvent::LocalJoin { client_id }) => {
+                    return Ok(Self {
+                        local_player,
+                        remote_players: DashMap::new(),
+                        self_id: Some(client_id),
+                        state_tx: Some(state_tx),
+                        net_rx: Some(net_rx),
+                        tx_count: AtomicU64::new(0),
+                        rx_count: AtomicU64::new(0),
+                    });
+                }
+                Some(NetEvent::Error(msg)) => return Err(msg),
+                Some(NetEvent::Disconnected) => {
+                    return Err("Disconnected while waiting for room join".to_string())
+                }
+                None => return Err("Network setup channel closed".to_string()),
+                _ => {}
+            }
+        }
     }
 
-    /// Update local player state based on input and elapsed time,
+    /// Update local player + network sync.
+    /// Runs every frame: input -> local update -> poll network -> send state -> lerp remotes.
     fn update(&mut self, dt: f32, pokedex: &Pokedex) {
         update_player(&mut self.local_player, dt, pokedex);
+
+        self.poll_network_events();
+        self.send_local_state();
+        self.lerp_remote_players(dt);
+    }
+
+    #[inline]
+    /// Get current player state for network broadcast.
+    fn get_local_state(&self) -> PlayerState {
+        self.local_player.to_state()
+    }
+
+    /// True if we've successfully joined a room (have a client_id).
+    fn has_joined(&self) -> bool {
+        self.self_id.is_some()
+    }
+
+    /// Pull all pending network events from channel into local queue.
+    #[inline]
+    fn poll_network_events(&mut self) {
+        let mut pending = Vec::new();
+
+        if let Some(net_rx) = self.net_rx.as_mut() {
+            while let Ok(evt) = net_rx.try_recv() {
+                pending.push(evt);
+            }
+        }
+
+        for evt in pending {
+            self.process_network_event(evt);
+        }
+    }
+
+    /// Send our current state to server (if joined). Called every frame.
+    fn send_local_state(&mut self) {
+        if !self.has_joined() {
+            return;
+        }
+
+        if let Some(state_tx) = &self.state_tx {
+            let _ = state_tx.send(self.get_local_state());
+            self.tx_count.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[inline]
+    /// Handle incoming network event - update self_id, remote players, or log error.
+    fn process_network_event(&mut self, event: NetEvent) {
+        match event {
+            NetEvent::LocalJoin { client_id } => {
+                self.self_id = Some(client_id);
+            }
+            NetEvent::RemoteState { sender_id, state } => {
+                self.rx_count.fetch_add(1, Ordering::Relaxed);
+                // Ignore self
+                if self.self_id == Some(sender_id) {
+                    return;
+                }
+
+                if let Some(mut remote) = self.remote_players.get_mut(&sender_id) {
+                    remote.apply_state(&state);
+                } else {
+                    self.remote_players
+                        .insert(sender_id, Player::from_state(&state));
+                }
+            }
+            NetEvent::RemoteLeft { client_id } => {
+                self.remote_players.remove(&client_id);
+            }
+            NetEvent::Disconnected => {
+                self.self_id = None;
+                self.remote_players.clear();
+                self.state_tx = None;
+                self.net_rx = None;
+            }
+            _ => {}
+        }
     }
 
     /// A global render fn for rendering both remote and local players
     /// Local player will direct Player and remotes use PlayerState received from network to render
     fn render_players(&self, pokedex: &Pokedex) {
-        for remote in &self.remote_players {
-            render_player(remote, pokedex);
+        for remote in self.remote_players.iter() {
+            render_player(remote.value(), pokedex);
         }
         render_player(&self.local_player, pokedex);
     }
 
+    fn lerp_remote_players(&mut self, dt: f32) {
+        let _alpha = dt.clamp(0.0, 1.0);
+        for mut remote in self.remote_players.iter_mut() {
+            remote.pos = remote.pos.lerp(remote.target_pos, 0.5);
+        }
+    }
+
     fn draw_debug(&self, pokedex: &Pokedex, dt: f32) {
-        debug_draw(&self.local_player, dt, pokedex);
+        render_debug(&self.local_player, dt, pokedex, self);
     }
 }
 
@@ -359,10 +517,9 @@ fn update_player(player: &mut Player, dt: f32, pokedex: &Pokedex) {
     // Move in facing direction
     if moving {
         player.facing = Facing::from_axes(axis_x, axis_y, player.facing);
-
         let direction = vec2(axis_x as f32, axis_y as f32).normalize();
         let new_pos = player.pos + direction * def.speed * dt;
-        player.pos = new_pos.lerp(player.pos, 0.05);
+        player.pos = player.pos.lerp(new_pos, 0.95);
     }
 
     let desired_anim = if moving {
@@ -402,7 +559,7 @@ fn update_player(player: &mut Player, dt: f32, pokedex: &Pokedex) {
     player.pos.y = player
         .pos
         .y
-        .clamp(clip.frame_w, screen_height() - clip.frame_w);
+        .clamp(clip.frame_h, screen_height() - clip.frame_h);
 }
 
 #[inline]
@@ -475,7 +632,7 @@ fn render_world() {
 }
 
 #[inline]
-fn debug_draw(player: &Player, dt: f32, pokedex: &Pokedex) {
+fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &GameState) {
     let (axis_x, axis_y) = read_axis_input();
     let def = pokedex.get(player.pokemon_kind);
     let clip = match player.anim_kind {
@@ -507,8 +664,8 @@ fn debug_draw(player: &Player, dt: f32, pokedex: &Pokedex) {
 
     let debug_panel_x = 12.0;
     let debug_panel_y = 12.0;
-    let debug_panel_w = 656.0;
-    let debug_panel_h = 225.0;
+    let debug_panel_w = 660.0;
+    let debug_panel_h = 245.0;
 
     draw_rectangle(
         debug_panel_x,
@@ -575,7 +732,7 @@ fn debug_draw(player: &Player, dt: f32, pokedex: &Pokedex) {
         debug_panel_x + 10.0,
         y,
         fs,
-        WHITE,
+        BLUE,
     );
     y += lh;
 
@@ -605,7 +762,7 @@ fn debug_draw(player: &Player, dt: f32, pokedex: &Pokedex) {
         debug_panel_x + 10.0,
         y,
         fs,
-        WHITE,
+        GRAY,
     );
     y += lh;
 
@@ -617,7 +774,7 @@ fn debug_draw(player: &Player, dt: f32, pokedex: &Pokedex) {
         debug_panel_x + 10.0,
         y,
         fs,
-        WHITE,
+        BEIGE,
     );
     y += lh;
 
@@ -635,20 +792,43 @@ fn debug_draw(player: &Player, dt: f32, pokedex: &Pokedex) {
     y += lh;
 
     let valid = source_in_bounds && row_in_bounds && frame_in_bounds && frame_timer_in_bounds;
-    let status_color = if valid {
-        Color::from_rgba(96, 245, 160, 255)
-    } else {
-        Color::from_rgba(255, 110, 110, 255)
-    };
+    let status_color = if valid { GREEN } else { RED };
     draw_text(
         &format!(
-            "Src_bounds: {}  Row_bounds: {} Frame_bounds: {}  Timer_bounds: {}",
+            "Sprites bounds: Src: {}  Row: {} Frame: {}  Timer: {}",
             source_in_bounds, row_in_bounds, frame_in_bounds, frame_timer_in_bounds
         ),
         debug_panel_x + 10.0,
         y,
         fs,
         status_color,
+    );
+    y += lh;
+
+    let id_text = game_state
+        .self_id
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "<offline>".to_string());
+    draw_text(
+        &format!("Network: ID: {} Addr: '{}'", id_text, SERVER_ADDR),
+        debug_panel_x + 10.0,
+        y,
+        fs,
+        PURPLE,
+    );
+    y += lh;
+
+    draw_text(
+        &format!(
+            "Remote Clients: '{}' TX: {}  RX: {}",
+            game_state.remote_players.len(),
+            game_state.tx_count.load(Ordering::Relaxed),
+            game_state.rx_count.load(Ordering::Relaxed),
+        ),
+        debug_panel_x + 10.0,
+        y,
+        fs,
+        YELLOW,
     );
 
     let rows_str = def
@@ -841,8 +1021,174 @@ fn debug_draw(player: &Player, dt: f32, pokedex: &Pokedex) {
     }
 }
 
+/// Network task running in background.
+/// Flow: connect -> echo test -> join room -> broadcast loop.
+#[inline]
+async fn network_loop(
+    mut state_rx: mpsc::UnboundedReceiver<PlayerState>, // from game thread: our state
+    net_tx: mpsc::UnboundedSender<NetEvent>,            // to game thread: remote events
+) {
+    let mut client = match Client::connect(SERVER_ADDR).await {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = net_tx.send(NetEvent::Error(format!("connect failed: {e}")));
+            let _ = net_tx.send(NetEvent::Disconnected);
+            return;
+        }
+    };
+
+    // Send known payload, verify byte-by-byte response matches exactly.
+    // This catches corrupted connections early.
+    let echo_payload = b"ghost-sync-mmo-echo-test";
+    if let Err(e) = client.echo_test(echo_payload).await {
+        let _ = net_tx.send(NetEvent::Error(format!("echo test send failed: {e}")));
+    }
+
+    // Echo recv
+    match client.recv().await {
+        Ok(Some(ServerEvent::EchoTest { data })) => {
+            if data != echo_payload.as_slice() {
+                println!("[Net] Echo FAILED: payload mismatch");
+                let _ = net_tx.send(NetEvent::Error(
+                    "Echo test failed: payload mismatch".to_string(),
+                ));
+                let _ = net_tx.send(NetEvent::Disconnected);
+                return;
+            }
+            println!("[Net] Echo OK");
+        }
+        Ok(None) => {
+            println!("[Net] Echo: connection closed");
+            let _ = net_tx.send(NetEvent::Disconnected);
+        }
+        Err(e) => {
+            println!("[Net] Echo: recv error - {e}");
+            let _ = net_tx.send(NetEvent::Error(format!(
+                "Recv failed during echo test: {e}"
+            )));
+        }
+        _ => {
+            println!("[Net] Echo: unexpected event");
+            let _ = net_tx.send(NetEvent::Disconnected);
+        }
+    }
+
+    if let Err(e) = client.join(ROOM_ID, None).await {
+        let _ = net_tx.send(NetEvent::Error(format!("join failed: {e}")));
+        let _ = net_tx.send(NetEvent::Disconnected);
+        return;
+    }
+
+    match client.recv().await {
+        Ok(Some(ServerEvent::Joined { client_id, .. })) => {
+            println!("[Net] Player joined room as {}", client_id);
+            let _ = net_tx.send(NetEvent::LocalJoin { client_id });
+        }
+        Ok(Some(ServerEvent::Error(msg))) => {
+            println!("[Net] Join error: {msg}");
+            let _ = net_tx.send(NetEvent::Error(format!("join error: {msg}")));
+            let _ = net_tx.send(NetEvent::Disconnected);
+            return;
+        }
+        Ok(Some(evt)) => {
+            println!("[Net] Join: unexpected event: {:?}", evt);
+            let _ = net_tx.send(NetEvent::Error(
+                "Unexpected event while joining room".to_string(),
+            ));
+        }
+        Ok(None) => {
+            println!("[Net] Join: connection closed");
+            let _ = net_tx.send(NetEvent::Disconnected);
+            return;
+        }
+        Err(e) => {
+            println!("[Net] Join: recv error - {e}");
+            let _ = net_tx.send(NetEvent::Error(format!("recv failed during join: {e}")));
+            let _ = net_tx.send(NetEvent::Disconnected);
+            return;
+        }
+    } // <-- The Startup loop job is done after this point,
+      // we should have successfully joined a room and can enter the main broadcast loop.
+
+    // Main broadcast loop: send our state / receive remote states.
+    loop {
+        tokio::select! {
+            // Outbound: got state from game thread -> broadcast over network
+            local_state = state_rx.recv() => {
+                let Some(state) = local_state else {
+                    break;
+                };
+
+                let payload = match wincode::serialize(&state) {
+                    Ok(p) => p,
+                    Err(_) => {
+                        //let _ = net_tx.send(NetEvent::Error(format!("serialize player state failed: {e:?}")));
+                        continue;
+                    }
+                };
+
+                if client.broadcast(&payload).await.is_err() {
+                    //let _ = net_tx.send(NetEvent::Error(format!("broadcast failed: {e}")));
+                    let _ = net_tx.send(NetEvent::Disconnected);
+                    break;
+                }
+            }
+
+            // Inbound: got event from server -> forward to game thread
+            recv_result = client.recv() => {
+                match recv_result {
+                    Ok(Some(ServerEvent::Broadcast { sender_id, data })) => {
+                        match wincode::deserialize::<PlayerState>(&data) {
+                            Ok(state) => {
+                                let _ = net_tx.send(NetEvent::RemoteState { sender_id, state });
+                            }
+                            Err(e) => {
+                                println!("[Net] Broadcast: deserialize failed - {e:?}");
+                                // let _ = net_tx.send(NetEvent::Error(format!("deserialize remote state failed: {e:?}")));
+                            }
+                        }
+                    }
+                    Ok(Some(ServerEvent::PlayerLeft { client_id })) => {
+                        println!("[Net] RemotePlayer {} left", client_id);
+                        let _ = net_tx.send(NetEvent::RemoteLeft { client_id });
+                    }
+                    Ok(Some(ServerEvent::PlayerJoined { client_id })) => {
+                        println!("[Net] RemotePlayer {} joined", client_id);
+                    }
+                    Ok(Some(ServerEvent::Error(msg))) => {
+                        println!("[Net] Server error: {msg}");
+                        // let _ = net_tx.send(NetEvent::Error(msg));
+                    }
+                    Ok(Some(ServerEvent::Joined { client_id, .. })) => {
+                        println!("[Net] Player re-joined as {}", client_id);
+                    }
+                    Ok(Some(ServerEvent::EchoTest { .. })) => {
+                        println!("[Net] Unexpected EchoTest in main loop");
+                    }
+                    Ok(None) => {
+                        println!("[Net] Connection closed");
+                        let _ = net_tx.send(NetEvent::Disconnected);
+                        break;
+                    }
+                    Err(e) => {
+                        println!("[Net] Recv error: {e}");
+                        // let _ = net_tx.send(NetEvent::Error(format!("recv failed: {e}")));
+                        let _ = net_tx.send(NetEvent::Disconnected);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[macroquad::main(window_conf)]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
+    // TODO: Use clap here and parse args properly
+    let mode = env::args().nth(1).unwrap_or_else(|| {
+        eprintln!("Usage: exe <online/offline>");
+        std::process::exit(1);
+    });
     let pokedex = Pokedex::load();
     let _rng = ::rand::rng();
 
@@ -851,7 +1197,23 @@ async fn main() {
         PokemonKind::Latias,
     );
 
-    let mut game_state = GameState::new(local_player);
+    // Use block_on BEFORE entering macroquad's game loop
+    // Macroquad doesn't support async/await inside its main loop
+    let mut game_state = match mode.as_str() {
+        "online" => {
+            // Run async network init in blocking way BEFORE macroquad starts
+            let online_state = ASYNC_RUNTIME.block_on(GameState::online(local_player));
+            match online_state {
+                Ok(state) => state,
+                Err(err) => {
+                    eprintln!("Failed to initialize online mode: {err}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "offline" => GameState::offline(local_player),
+        _ => GameState::offline(local_player),
+    };
 
     loop {
         let dt = get_frame_time();
@@ -867,16 +1229,25 @@ async fn main() {
         }
         next_frame().await;
     }
+    Ok(())
 }
 
 fn window_conf() -> Conf {
     Conf {
         window_title: String::from("Ghost Sync - MMO Test"),
-        window_width: 1024,
+        window_width: 1280,
         window_height: 768,
         window_resizable: true,
         fullscreen: false,
-        sample_count: 1024,
+        sample_count: 2048,
         ..Default::default()
     }
 }
+
+static ASYNC_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .worker_threads(16)
+        .build()
+        .expect("Failed to create Tokio runtime")
+});
