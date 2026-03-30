@@ -2,15 +2,15 @@ use ::rand::rng;
 #[allow(unused_imports)]
 use ::rand::RngExt;
 use macroquad::prelude::*;
-use std::sync::Arc;
+use wincode::{SchemaRead, SchemaWrite};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(SchemaRead, SchemaWrite, Debug, Clone, Copy, PartialEq, Eq)]
 enum AnimKind {
     Idle,
     Walk,
 }
 
-#[derive(Clone, Copy)]
+#[derive(SchemaRead, SchemaWrite, Clone, Copy)]
 #[repr(usize)]
 enum Facing {
     South = 0,
@@ -47,299 +47,197 @@ struct Anim {
     frame_durations: &'static [f32],
 }
 
-trait Pokemon: Send + Sync {
-    fn name(&self) -> &'static str;
-    fn idle(&self) -> &Anim;
-    fn walk(&self) -> &Anim;
-    fn facing_rows(&self) -> &'static [usize; 8];
-    fn speed(&self) -> f32;
-    fn scale(&self) -> f32;
-}
-
-struct Lugia {
+struct Pokemon {
+    name: &'static str,
     idle: Anim,
     walk: Anim,
+    facing_rows: [usize; 8],
+    speed: f32,
+    scale: f32,
 }
 
-impl Lugia {
-    const FACING_ROWS: [usize; 8] = [0, 7, 6, 5, 4, 3, 2, 1];
-    const IDLE_DURATIONS: [f32; 2] = [0.5, 0.5];
-    const WALK_DURATIONS: [f32; 2] = [1.0 / 5.0, 1.0 / 5.0];
+struct Pokedex {
+    lugia: Pokemon,
+    latios: Pokemon,
+    latias: Pokemon,
+    articuno: Pokemon,
+}
 
-    fn new() -> Self {
-        const LUGIA_IDLE_ANIM: &[u8] = include_bytes!("../assets/sprites/Lugia/Idle-Anim.png");
-        const LUGIA_WALK_ANIM: &[u8] = include_bytes!("../assets/sprites/Lugia/Walk-Anim.png");
+impl Pokedex {
+    fn load() -> Self {
+        Self {
+            lugia: Self::load_lugia(),
+            latios: Self::load_latios(),
+            latias: Self::load_latias(),
+            articuno: Self::load_articuno(),
+        }
+    }
 
-        let idle = Texture2D::from_file_with_format(LUGIA_IDLE_ANIM, Some(ImageFormat::Png));
+    fn get(&self, kind: PokemonKind) -> &Pokemon {
+        match kind {
+            PokemonKind::Lugia => &self.lugia,
+            PokemonKind::Latios => &self.latios,
+            PokemonKind::Latias => &self.latias,
+            PokemonKind::Articuno => &self.articuno,
+        }
+    }
+
+    fn load_lugia() -> Pokemon {
+        let idle = Texture2D::from_file_with_format(
+            include_bytes!("../assets/sprites/Lugia/Idle-Anim.png"),
+            Some(ImageFormat::Png),
+        );
         idle.set_filter(FilterMode::Nearest);
 
-        let walk = Texture2D::from_file_with_format(LUGIA_WALK_ANIM, Some(ImageFormat::Png));
+        let walk = Texture2D::from_file_with_format(
+            include_bytes!("../assets/sprites/Lugia/Walk-Anim.png"),
+            Some(ImageFormat::Png),
+        );
         walk.set_filter(FilterMode::Nearest);
 
-        Self {
+        Pokemon {
+            name: "Lugia",
             idle: Anim {
                 texture: idle,
                 frame_w: 72.0,
                 frame_h: 96.0,
-                frame_durations: &Self::IDLE_DURATIONS,
+                frame_durations: &[0.5, 0.5],
             },
             walk: Anim {
                 texture: walk,
                 frame_w: 80.0,
                 frame_h: 96.0,
-                frame_durations: &Self::WALK_DURATIONS,
+                frame_durations: &[1.0 / 5.0, 1.0 / 5.0],
             },
+            facing_rows: [0, 7, 6, 5, 4, 3, 2, 1],
+            speed: 200.0,
+            scale: 2.0,
         }
     }
-}
 
-impl Pokemon for Lugia {
-    fn name(&self) -> &'static str {
-        "Lugia"
-    }
-
-    fn idle(&self) -> &Anim {
-        &self.idle
-    }
-
-    fn walk(&self) -> &Anim {
-        &self.walk
-    }
-
-    fn facing_rows(&self) -> &'static [usize; 8] {
-        &Self::FACING_ROWS
-    }
-
-    fn speed(&self) -> f32 {
-        200.0
-    }
-
-    fn scale(&self) -> f32 {
-        2.0
-    }
-}
-
-struct Latios {
-    idle: Anim,
-    walk: Anim,
-}
-
-impl Latios {
-    const FACING_ROWS: [usize; 8] = [0, 7, 6, 5, 4, 3, 2, 1];
-    const IDLE_DURATIONS: [f32; 6] = [
-        1.0 / 8.0,
-        1.0 / 8.0,
-        1.0 / 8.0,
-        1.0 / 8.0,
-        1.0 / 8.0,
-        1.0 / 8.0,
-    ];
-    const WALK_DURATIONS: [f32; 12] = [
-        1.0 / 10.0,
-        1.0 / 10.0,
-        1.0 / 10.0,
-        1.0 / 10.0,
-        1.0 / 10.0,
-        1.0 / 10.0,
-        1.0 / 10.0,
-        1.0 / 10.0,
-        1.0 / 10.0,
-        1.0 / 10.0,
-        1.0 / 10.0,
-        1.0 / 10.0,
-    ];
-
-    fn new() -> Self {
-        const LATIOS_IDLE_ANIM: &[u8] = include_bytes!("../assets/sprites/Latios/Idle-Anim.png");
-        const LATIOS_WALK_ANIM: &[u8] = include_bytes!("../assets/sprites/Latios/Walk-Anim.png");
-
-        let idle = Texture2D::from_file_with_format(LATIOS_IDLE_ANIM, Some(ImageFormat::Png));
+    fn load_latios() -> Pokemon {
+        let idle = Texture2D::from_file_with_format(
+            include_bytes!("../assets/sprites/Latios/Idle-Anim.png"),
+            Some(ImageFormat::Png),
+        );
         idle.set_filter(FilterMode::Nearest);
 
-        let walk = Texture2D::from_file_with_format(LATIOS_WALK_ANIM, Some(ImageFormat::Png));
+        let walk = Texture2D::from_file_with_format(
+            include_bytes!("../assets/sprites/Latios/Walk-Anim.png"),
+            Some(ImageFormat::Png),
+        );
         walk.set_filter(FilterMode::Nearest);
 
-        Self {
+        Pokemon {
+            name: "Latios",
             idle: Anim {
                 texture: idle,
                 frame_w: 64.0,
                 frame_h: 80.0,
-                frame_durations: &Self::IDLE_DURATIONS,
+                frame_durations: &[1.0 / 8.0; 6],
             },
             walk: Anim {
                 texture: walk,
                 frame_w: 64.0,
                 frame_h: 80.0,
-                frame_durations: &Self::WALK_DURATIONS,
+                frame_durations: &[1.0 / 10.0; 12],
             },
+            facing_rows: [0, 7, 6, 5, 4, 3, 2, 1],
+            speed: 240.0,
+            scale: 2.0,
         }
     }
-}
 
-impl Pokemon for Latios {
-    fn name(&self) -> &'static str {
-        "Latios"
-    }
-
-    fn idle(&self) -> &Anim {
-        &self.idle
-    }
-
-    fn walk(&self) -> &Anim {
-        &self.walk
-    }
-
-    fn facing_rows(&self) -> &'static [usize; 8] {
-        &Self::FACING_ROWS
-    }
-
-    fn speed(&self) -> f32 {
-        240.0
-    }
-
-    fn scale(&self) -> f32 {
-        2.0
-    }
-}
-
-struct Latias {
-    idle: Anim,
-    walk: Anim,
-}
-
-impl Latias {
-    const FACING_ROWS: [usize; 8] = [0, 7, 6, 5, 4, 3, 2, 1];
-    const IDLE_DURATIONS: [f32; 6] = [
-        1.0 / 8.0,
-        1.0 / 8.0,
-        1.0 / 8.0,
-        1.0 / 8.0,
-        1.0 / 8.0,
-        1.0 / 8.0,
-    ];
-    const WALK_DURATIONS: [f32; 12] = [
-        1.0 / 12.0,
-        1.0 / 12.0,
-        1.0 / 12.0,
-        1.0 / 12.0,
-        1.0 / 12.0,
-        1.0 / 12.0,
-        1.0 / 12.0,
-        1.0 / 12.0,
-        1.0 / 12.0,
-        1.0 / 12.0,
-        1.0 / 12.0,
-        1.0 / 12.0,
-    ];
-
-    pub fn new() -> Self {
-        const LATIAS_IDLE_ANIM: &[u8] = include_bytes!("../assets/sprites/Latias/Idle-Anim.png");
-        const LATIAS_WALK_ANIM: &[u8] = include_bytes!("../assets/sprites/Latias/Walk-Anim.png");
-
-        let idle = Texture2D::from_file_with_format(LATIAS_IDLE_ANIM, Some(ImageFormat::Png));
+    fn load_latias() -> Pokemon {
+        let idle = Texture2D::from_file_with_format(
+            include_bytes!("../assets/sprites/Latias/Idle-Anim.png"),
+            Some(ImageFormat::Png),
+        );
         idle.set_filter(FilterMode::Nearest);
 
-        let walk = Texture2D::from_file_with_format(LATIAS_WALK_ANIM, Some(ImageFormat::Png));
+        let walk = Texture2D::from_file_with_format(
+            include_bytes!("../assets/sprites/Latias/Walk-Anim.png"),
+            Some(ImageFormat::Png),
+        );
         walk.set_filter(FilterMode::Nearest);
 
-        Self {
+        Pokemon {
+            name: "Latias",
             idle: Anim {
                 texture: idle,
                 frame_w: 48.0,
                 frame_h: 64.0,
-                frame_durations: &Self::IDLE_DURATIONS,
+                frame_durations: &[1.0 / 8.0; 6],
             },
             walk: Anim {
                 texture: walk,
                 frame_w: 48.0,
                 frame_h: 64.0,
-                frame_durations: &Self::WALK_DURATIONS,
+                frame_durations: &[1.0 / 12.0; 12],
             },
+            facing_rows: [0, 7, 6, 5, 4, 3, 2, 1],
+            speed: 220.0,
+            scale: 2.0,
         }
     }
-}
 
-impl Pokemon for Latias {
-    fn name(&self) -> &'static str {
-        "Latias"
-    }
-    fn idle(&self) -> &Anim {
-        &self.idle
-    }
-    fn walk(&self) -> &Anim {
-        &self.walk
-    }
-    fn facing_rows(&self) -> &'static [usize; 8] {
-        &Self::FACING_ROWS
-    }
-    fn speed(&self) -> f32 {
-        220.0
-    }
-    fn scale(&self) -> f32 {
-        2.0
-    }
-}
-
-struct Articuno {
-    idle: Anim,
-    walk: Anim,
-}
-
-impl Articuno {
-    const FACING_ROWS: [usize; 8] = [0, 7, 6, 5, 4, 3, 2, 1];
-    const IDLE_DURATIONS: [f32; 4] = [1.0 / 3.0, 1.0 / 4.0, 1.0 / 6.0, 1.0 / 3.0];
-    const WALK_DURATIONS: [f32; 4] = [1.0 / 14.0, 1.0 / 10.0, 1.0 / 12.0, 1.0 / 10.0];
-    fn new() -> Self {
-        const ARTICUNO_IDLE_ANIM: &[u8] =
-            include_bytes!("../assets/sprites/Articuno/Idle-Anim.png");
-        const ARTICUNO_WALK_ANIM: &[u8] =
-            include_bytes!("../assets/sprites/Articuno/Walk-Anim.png");
-
-        let idle = Texture2D::from_file_with_format(ARTICUNO_IDLE_ANIM, Some(ImageFormat::Png));
+    fn load_articuno() -> Pokemon {
+        let idle = Texture2D::from_file_with_format(
+            include_bytes!("../assets/sprites/Articuno/Idle-Anim.png"),
+            Some(ImageFormat::Png),
+        );
         idle.set_filter(FilterMode::Nearest);
 
-        let walk = Texture2D::from_file_with_format(ARTICUNO_WALK_ANIM, Some(ImageFormat::Png));
+        let walk = Texture2D::from_file_with_format(
+            include_bytes!("../assets/sprites/Articuno/Walk-Anim.png"),
+            Some(ImageFormat::Png),
+        );
         walk.set_filter(FilterMode::Nearest);
 
-        Self {
+        Pokemon {
+            name: "Articuno",
             idle: Anim {
                 texture: idle,
                 frame_w: 88.0,
                 frame_h: 88.0,
-                frame_durations: &Self::IDLE_DURATIONS,
+                frame_durations: &[1.0 / 3.0, 1.0 / 4.0, 1.0 / 6.0, 1.0 / 3.0],
             },
             walk: Anim {
                 texture: walk,
                 frame_w: 88.0,
                 frame_h: 88.0,
-                frame_durations: &Self::WALK_DURATIONS,
+                frame_durations: &[1.0 / 14.0, 1.0 / 10.0, 1.0 / 12.0, 1.0 / 10.0],
             },
+            facing_rows: [0, 7, 6, 5, 4, 3, 2, 1],
+            speed: 260.0,
+            scale: 2.0,
         }
     }
 }
 
-impl Pokemon for Articuno {
-    fn name(&self) -> &'static str {
-        "Articuno"
-    }
-    fn idle(&self) -> &Anim {
-        &self.idle
-    }
-    fn walk(&self) -> &Anim {
-        &self.walk
-    }
-    fn facing_rows(&self) -> &'static [usize; 8] {
-        &Self::FACING_ROWS
-    }
-    fn speed(&self) -> f32 {
-        260.0
-    }
-    fn scale(&self) -> f32 {
-        2.0
-    }
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+#[derive(SchemaRead, SchemaWrite, Debug, Clone, Copy, PartialEq, Eq)]
+enum PokemonKind {
+    Lugia,
+    Latios,
+    Latias,
+    Articuno,
 }
 
-/////////////////////////////////////////////////
+/// Player state that can be broadcast over the network.
+/// This is a compact representation of the player's current
+#[allow(unused)]
+#[derive(SchemaRead, SchemaWrite, Clone, Copy)]
+struct PlayerState {
+    x: f32,
+    y: f32,
+    facing: Facing,
+    anim_kind: AnimKind,
+    frame_index: usize,
+    frame_timer: f32,
+    pokemon_kind: PokemonKind,
+}
 
 struct Player {
     pos: Vec2,
@@ -347,19 +245,86 @@ struct Player {
     anim_kind: AnimKind,
     frame_index: usize,
     frame_timer: f32,
-    pokemon: Arc<dyn Pokemon>,
+    pokemon_kind: PokemonKind,
 }
 
 impl Player {
-    fn new(pos: Vec2, pokemon: Arc<dyn Pokemon>) -> Self {
+    fn new(pos: Vec2, pokemon_kind: PokemonKind) -> Self {
         Self {
             pos,
             facing: Facing::South,
             anim_kind: AnimKind::Idle,
             frame_index: 0,
             frame_timer: 0.0,
-            pokemon,
+            pokemon_kind,
         }
+    }
+
+    /// Form a state of local players
+    #[allow(unused)]
+    fn to_state(&self) -> PlayerState {
+        PlayerState {
+            x: self.pos.x,
+            y: self.pos.y,
+            facing: self.facing,
+            anim_kind: self.anim_kind,
+            frame_index: self.frame_index,
+            frame_timer: self.frame_timer,
+            pokemon_kind: self.pokemon_kind,
+        }
+    }
+
+    /// Get a state from the network
+    /// Can be used to smooth interpolation of remote players in client side
+    #[allow(unused)]
+    fn from_state(state: &PlayerState) -> Self {
+        Player {
+            pos: Vec2::new(state.x, state.y),
+            facing: state.facing,
+            anim_kind: state.anim_kind,
+            frame_index: 0,
+            frame_timer: 0.0,
+            pokemon_kind: state.pokemon_kind,
+        }
+    }
+}
+
+struct GameState {
+    local_player: Player,
+    remote_players: Vec<Player>,
+}
+
+impl GameState {
+    /// Start with a local player
+    fn new(local_player: Player) -> Self {
+        Self {
+            local_player,
+            remote_players: Vec::new(),
+        }
+    }
+
+    /// Add a remote player for Game state to manage it
+    #[allow(unused)]
+    fn add_remote_player(&mut self, remote_player: Player) {
+        self.remote_players.push(remote_player);
+    }
+
+    /// Update local player state based on input and elapsed time,
+    fn update(&mut self, dt: f32, pokedex: &Pokedex) {
+        update_player(&mut self.local_player, dt, pokedex);
+    }
+
+    /// A global render fn for rendering both remote and local players
+    /// Local player will direct Player and remotes use PlayerState received from network to render
+    fn render_players(&self, pokedex: &Pokedex) {
+        for remote in &self.remote_players {
+            render_player(remote, pokedex);
+        }
+        render_player(&self.local_player, pokedex);
+    }
+
+    fn draw_debug(&self, pokedex: &Pokedex, dt: f32) {
+        debug_draw(&self.local_player, dt, pokedex);
     }
 }
 
@@ -385,16 +350,18 @@ fn read_axis_input() -> (i8, i8) {
 }
 
 #[inline]
-fn update_player(player: &mut Player, dt: f32) {
+fn update_player(player: &mut Player, dt: f32, pokedex: &Pokedex) {
     let (axis_x, axis_y) = read_axis_input();
     let moving = axis_x != 0 || axis_y != 0;
+
+    let def = pokedex.get(player.pokemon_kind);
 
     // Move in facing direction
     if moving {
         player.facing = Facing::from_axes(axis_x, axis_y, player.facing);
 
         let direction = vec2(axis_x as f32, axis_y as f32).normalize();
-        let new_pos = player.pos + direction * player.pokemon.speed() * dt;
+        let new_pos = player.pos + direction * def.speed * dt;
         player.pos = new_pos.lerp(player.pos, 0.05);
     }
 
@@ -412,8 +379,8 @@ fn update_player(player: &mut Player, dt: f32) {
     }
 
     let clip = match player.anim_kind {
-        AnimKind::Idle => player.pokemon.idle(),
-        AnimKind::Walk => player.pokemon.walk(),
+        AnimKind::Idle => &def.idle,
+        AnimKind::Walk => &def.walk,
     };
 
     // Advance anim frame
@@ -439,14 +406,15 @@ fn update_player(player: &mut Player, dt: f32) {
 }
 
 #[inline]
-fn render_player(player: &Player) {
+fn render_player(player: &Player, pokedex: &Pokedex) {
+    let def = pokedex.get(player.pokemon_kind);
     let clip = match player.anim_kind {
-        AnimKind::Idle => player.pokemon.idle(),
-        AnimKind::Walk => player.pokemon.walk(),
+        AnimKind::Idle => &def.idle,
+        AnimKind::Walk => &def.walk,
     };
 
     // Get which row to render
-    let row = player.pokemon.facing_rows()[player.facing as usize] as f32;
+    let row = def.facing_rows[player.facing as usize] as f32;
     // Get the frame offset
     let source = Rect::new(
         player.frame_index as f32 * clip.frame_w,
@@ -456,8 +424,8 @@ fn render_player(player: &Player) {
     );
 
     // Scale it
-    let dest_w = clip.frame_w * player.pokemon.scale();
-    let dest_h = clip.frame_h * player.pokemon.scale();
+    let dest_w = clip.frame_w * def.scale;
+    let dest_h = clip.frame_h * def.scale;
 
     draw_texture_ex(
         &clip.texture,
@@ -471,7 +439,7 @@ fn render_player(player: &Player) {
         },
     );
 
-    let label = player.pokemon.name();
+    let label = def.name;
     let text_dims = measure_text(label, None, 24, 1.0);
     draw_text(
         label,
@@ -482,6 +450,7 @@ fn render_player(player: &Player) {
     );
 }
 
+#[inline]
 fn render_world() {
     clear_background(Color::from_rgba(22, 30, 44, 255));
 
@@ -506,14 +475,15 @@ fn render_world() {
 }
 
 #[inline]
-fn debug_draw(player: &Player, dt: f32) {
+fn debug_draw(player: &Player, dt: f32, pokedex: &Pokedex) {
     let (axis_x, axis_y) = read_axis_input();
+    let def = pokedex.get(player.pokemon_kind);
     let clip = match player.anim_kind {
-        AnimKind::Idle => player.pokemon.idle(),
-        AnimKind::Walk => player.pokemon.walk(),
+        AnimKind::Idle => &def.idle,
+        AnimKind::Walk => &def.walk,
     };
 
-    let row = player.pokemon.facing_rows()[player.facing as usize];
+    let row = def.facing_rows[player.facing as usize];
     let source = Rect::new(
         player.frame_index as f32 * clip.frame_w,
         row as f32 * clip.frame_h,
@@ -588,10 +558,7 @@ fn debug_draw(player: &Player, dt: f32) {
     draw_text(
         &format!(
             "Pokemon: {:<8}  Anim: {:?}  Facing_idx: {}  Mapped_row: {}",
-            player.pokemon.name(),
-            player.anim_kind,
-            player.facing as usize,
-            row
+            def.name, player.anim_kind, player.facing as usize, row
         ),
         debug_panel_x + 10.0,
         y,
@@ -603,12 +570,7 @@ fn debug_draw(player: &Player, dt: f32) {
     draw_text(
         &format!(
             "Input axis: ({:>2}, {:>2})  Pos: ({:>7.2}, {:>7.2})  Speed: {:.1}  Scale: {:.2}",
-            axis_x,
-            axis_y,
-            player.pos.x,
-            player.pos.y,
-            player.pokemon.speed(),
-            player.pokemon.scale()
+            axis_x, axis_y, player.pos.x, player.pos.y, def.speed, def.scale
         ),
         debug_panel_x + 10.0,
         y,
@@ -689,9 +651,8 @@ fn debug_draw(player: &Player, dt: f32) {
         status_color,
     );
 
-    let rows_str = player
-        .pokemon
-        .facing_rows()
+    let rows_str = def
+        .facing_rows
         .iter()
         .enumerate()
         .map(|(i, r)| format!("{}:{}", i, r))
@@ -705,8 +666,8 @@ fn debug_draw(player: &Player, dt: f32) {
         Color::from_rgba(160, 186, 225, 255),
     );
 
-    let dest_w = clip.frame_w * player.pokemon.scale();
-    let dest_h = clip.frame_h * player.pokemon.scale();
+    let dest_w = clip.frame_w * def.scale;
+    let dest_h = clip.frame_h * def.scale;
     let left = player.pos.x - dest_w * 0.5;
     let top = player.pos.y - dest_h * 0.5;
 
@@ -882,28 +843,29 @@ fn debug_draw(player: &Player, dt: f32) {
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let articuno = Arc::new(Articuno::new());
-    let _lugia: Arc<dyn Pokemon> = Arc::new(Lugia::new());
-    let _latios: Arc<dyn Pokemon> = Arc::new(Latios::new());
-    let _latias: Arc<dyn Pokemon> = Arc::new(Latias::new());
-
+    let pokedex = Pokedex::load();
     let _rng = ::rand::rng();
 
-    let mut local_player = Player::new(vec2(screen_width() / 2.0, screen_height() / 2.0), articuno);
+    let local_player = Player::new(
+        vec2(screen_width() / 2.0, screen_height() / 2.0),
+        PokemonKind::Latias,
+    );
+
+    let mut game_state = GameState::new(local_player);
 
     loop {
         let dt = get_frame_time();
 
-        update_player(&mut local_player, dt);
         render_world();
-        render_player(&local_player);
+        game_state.update(dt, &pokedex);
+        game_state.render_players(&pokedex);
         if is_key_down(KeyCode::Space) {
-            debug_draw(&local_player, dt);
+            game_state.draw_debug(&pokedex, dt);
         }
-        next_frame().await;
         if is_key_down(KeyCode::Escape) {
             break;
         }
+        next_frame().await;
     }
 }
 
