@@ -49,6 +49,70 @@ async fn main() -> Result<()> {
                 println!("Echo successful");
             }
         }
+        Some(Command::DeleteRoom { room, addr }) => {
+            let ip = addr.parse::<SocketAddr>()?;
+            let res = control_command(&format!("DELETE_ROOM\n{}\n", room), ip).await?;
+            if res.ok {
+                println!("Deleted room: {}", res.body_lines.first().unwrap_or(&room));
+            } else {
+                println!("Error: {}", res.error_message.unwrap_or_default());
+            }
+        }
+        Some(Command::RoomClients { room, addr }) => {
+            let ip = addr.parse::<SocketAddr>()?;
+            let res = control_command(&format!("ROOM_CLIENTS\n{}\n", room), ip).await?;
+            if res.ok {
+                let mut lines = res.body_lines.iter();
+                let _room_id = lines.next();
+                println!("Clients in room {}:", room);
+                let mut count = 0;
+                for client in lines {
+                    println!("  {}", client);
+                    count += 1;
+                }
+                if count == 0 {
+                    println!("  (none)");
+                }
+            } else {
+                println!("Error: {}", res.error_message.unwrap_or_default());
+            }
+        }
+        Some(Command::KickClient { client_id, addr }) => {
+            let ip = addr.parse::<SocketAddr>()?;
+            let res = control_command(&format!("KICK_CLIENT\n{}\n", client_id), ip).await?;
+            if res.ok {
+                println!(
+                    "Kicked client: {}",
+                    res.body_lines.first().unwrap_or(&client_id)
+                );
+            } else {
+                println!("Error: {}", res.error_message.unwrap_or_default());
+            }
+        }
+        Some(Command::Metrics { addr }) => {
+            let ip = addr.parse::<SocketAddr>()?;
+            let res = control_command("METRICS\n", ip).await?;
+            if res.ok {
+                let lines = res.body_lines;
+                if lines.len() >= 4 {
+                    println!("Metrics:");
+                    println!("  Total connections: {}", lines[0]);
+                    println!("  Uptime (hrs): {}", lines[1]);
+                    println!("  Total rooms: {}", lines[2]);
+                    println!("  Total clients: {}", lines[3]);
+                    if lines.len() > 4 {
+                        println!("  Channel Queues:");
+                        for line in &lines[4..] {
+                            println!("    {}", line);
+                        }
+                    }
+                } else {
+                    println!("Invalid metrics response format");
+                }
+            } else {
+                println!("Error: {}", res.error_message.unwrap_or_default());
+            }
+        }
         None => {
             println!("No command provided");
         }
@@ -269,8 +333,10 @@ struct Cliargs {
 enum Command {
     /// Create a room
     Create {
+        /// Room name (max 8 chars, letters/digits/-/_ only)
         room: String,
 
+        /// Address of the daemon's control API server
         #[clap(short, long)]
         addr: String,
 
@@ -285,6 +351,7 @@ enum Command {
 
     /// List all rooms
     List {
+        /// Address of the daemon's control API server
         #[clap(short, long)]
         addr: String,
     },
@@ -294,6 +361,44 @@ enum Command {
         /// The payload to echo
         payload: String,
 
+        /// Address of the daemon's control API server
+        #[clap(short, long)]
+        addr: String,
+    },
+
+    /// Delete a room
+    DeleteRoom {
+        /// Room name
+        room: String,
+
+        /// Address of the daemon's control API server
+        #[clap(short, long)]
+        addr: String,
+    },
+
+    /// List all clients in a room
+    RoomClients {
+        /// Room name
+        room: String,
+
+        /// Address of the daemon's control API server
+        #[clap(short, long)]
+        addr: String,
+    },
+
+    /// Kick a client
+    KickClient {
+        /// Client ID (UUID)
+        client_id: String,
+
+        /// Address of the daemon's control API server
+        #[clap(short, long)]
+        addr: String,
+    },
+
+    /// Fetch server metrics
+    Metrics {
+        /// Address of the daemon's control API server
         #[clap(short, long)]
         addr: String,
     },

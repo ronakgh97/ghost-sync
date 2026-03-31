@@ -624,14 +624,15 @@ struct Cliargs {
 enum Command {
     /// Run daemon server
     Run {
-        /// Addr to bind inner game server to
+        /// Addr to bind inner game server to (Default: 0.0.0.0:7777)
         #[clap(short, long)]
         game_addr: Option<String>,
 
-        /// Addr to bind control layer to
+        /// Addr to bind control layer to (Default: 0.0.0.0:7878)
         #[clap(short, long)]
         api_addr: Option<String>,
 
+        /// Max-connected client allow on game server
         #[clap(short, long)]
         max_client: Option<usize>,
 
