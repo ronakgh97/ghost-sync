@@ -47,3 +47,4 @@ tokio = { version = "1.50.0", features = ["test-util"] }
 macroquad = "0.4.14"
 rand = "0.10.0"
 clap = { version = "4.6.0", features = ["derive"] }
+cliclack = "0.5.2"

@@ -1,14 +1,23 @@
+mod model;
+
+use crate::model::Pokedex;
 use ::rand::rng;
 #[allow(unused_imports)]
 use ::rand::RngExt;
 use dashmap::DashMap;
 use ghost_sync::{Client, ServerEvent, Uuid};
 use macroquad::prelude::*;
-use std::env;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::LazyLock;
+use std::sync::{LazyLock, OnceLock};
 use tokio::sync::mpsc;
 use wincode::{SchemaRead, SchemaWrite};
+
+struct Anim {
+    texture: Texture2D,
+    frame_w: f32,
+    frame_h: f32,
+    frame_durations: &'static [f32],
+}
 
 #[derive(SchemaRead, SchemaWrite, Debug, Clone, Copy, PartialEq, Eq)]
 enum AnimKind {
@@ -46,181 +55,6 @@ impl Facing {
     }
 }
 
-struct Anim {
-    texture: Texture2D,
-    frame_w: f32,
-    frame_h: f32,
-    frame_durations: &'static [f32],
-}
-
-struct Pokemon {
-    name: &'static str,
-    idle: Anim,
-    walk: Anim,
-    facing_rows: [usize; 8],
-    speed: f32,
-    scale: f32,
-}
-
-struct Pokedex {
-    lugia: Pokemon,
-    latios: Pokemon,
-    latias: Pokemon,
-    articuno: Pokemon,
-}
-
-impl Pokedex {
-    fn load() -> Self {
-        Self {
-            lugia: Self::load_lugia(),
-            latios: Self::load_latios(),
-            latias: Self::load_latias(),
-            articuno: Self::load_articuno(),
-        }
-    }
-
-    fn get(&self, kind: PokemonKind) -> &Pokemon {
-        match kind {
-            PokemonKind::Lugia => &self.lugia,
-            PokemonKind::Latios => &self.latios,
-            PokemonKind::Latias => &self.latias,
-            PokemonKind::Articuno => &self.articuno,
-        }
-    }
-
-    fn load_lugia() -> Pokemon {
-        let idle = Texture2D::from_file_with_format(
-            include_bytes!("../assets/sprites/Lugia/Idle-Anim.png"),
-            Some(ImageFormat::Png),
-        );
-        idle.set_filter(FilterMode::Nearest);
-
-        let walk = Texture2D::from_file_with_format(
-            include_bytes!("../assets/sprites/Lugia/Walk-Anim.png"),
-            Some(ImageFormat::Png),
-        );
-        walk.set_filter(FilterMode::Nearest);
-
-        Pokemon {
-            name: "Lugia",
-            idle: Anim {
-                texture: idle,
-                frame_w: 72.0,
-                frame_h: 96.0,
-                frame_durations: &[0.5, 0.5],
-            },
-            walk: Anim {
-                texture: walk,
-                frame_w: 80.0,
-                frame_h: 96.0,
-                frame_durations: &[1.0 / 5.0, 1.0 / 5.0],
-            },
-            facing_rows: [0, 7, 6, 5, 4, 3, 2, 1],
-            speed: 200.0,
-            scale: 2.0,
-        }
-    }
-
-    fn load_latios() -> Pokemon {
-        let idle = Texture2D::from_file_with_format(
-            include_bytes!("../assets/sprites/Latios/Idle-Anim.png"),
-            Some(ImageFormat::Png),
-        );
-        idle.set_filter(FilterMode::Nearest);
-
-        let walk = Texture2D::from_file_with_format(
-            include_bytes!("../assets/sprites/Latios/Walk-Anim.png"),
-            Some(ImageFormat::Png),
-        );
-        walk.set_filter(FilterMode::Nearest);
-
-        Pokemon {
-            name: "Latios",
-            idle: Anim {
-                texture: idle,
-                frame_w: 64.0,
-                frame_h: 80.0,
-                frame_durations: &[1.0 / 8.0; 6],
-            },
-            walk: Anim {
-                texture: walk,
-                frame_w: 64.0,
-                frame_h: 80.0,
-                frame_durations: &[1.0 / 10.0; 12],
-            },
-            facing_rows: [0, 7, 6, 5, 4, 3, 2, 1],
-            speed: 240.0,
-            scale: 2.0,
-        }
-    }
-
-    fn load_latias() -> Pokemon {
-        let idle = Texture2D::from_file_with_format(
-            include_bytes!("../assets/sprites/Latias/Idle-Anim.png"),
-            Some(ImageFormat::Png),
-        );
-        idle.set_filter(FilterMode::Nearest);
-
-        let walk = Texture2D::from_file_with_format(
-            include_bytes!("../assets/sprites/Latias/Walk-Anim.png"),
-            Some(ImageFormat::Png),
-        );
-        walk.set_filter(FilterMode::Nearest);
-
-        Pokemon {
-            name: "Latias",
-            idle: Anim {
-                texture: idle,
-                frame_w: 48.0,
-                frame_h: 64.0,
-                frame_durations: &[1.0 / 8.0; 6],
-            },
-            walk: Anim {
-                texture: walk,
-                frame_w: 48.0,
-                frame_h: 64.0,
-                frame_durations: &[1.0 / 12.0; 12],
-            },
-            facing_rows: [0, 7, 6, 5, 4, 3, 2, 1],
-            speed: 220.0,
-            scale: 2.0,
-        }
-    }
-
-    fn load_articuno() -> Pokemon {
-        let idle = Texture2D::from_file_with_format(
-            include_bytes!("../assets/sprites/Articuno/Idle-Anim.png"),
-            Some(ImageFormat::Png),
-        );
-        idle.set_filter(FilterMode::Nearest);
-
-        let walk = Texture2D::from_file_with_format(
-            include_bytes!("../assets/sprites/Articuno/Walk-Anim.png"),
-            Some(ImageFormat::Png),
-        );
-        walk.set_filter(FilterMode::Nearest);
-
-        Pokemon {
-            name: "Articuno",
-            idle: Anim {
-                texture: idle,
-                frame_w: 88.0,
-                frame_h: 88.0,
-                frame_durations: &[1.0 / 3.0, 1.0 / 4.0, 1.0 / 6.0, 1.0 / 3.0],
-            },
-            walk: Anim {
-                texture: walk,
-                frame_w: 88.0,
-                frame_h: 88.0,
-                frame_durations: &[1.0 / 14.0, 1.0 / 10.0, 1.0 / 12.0, 1.0 / 10.0],
-            },
-            facing_rows: [0, 7, 6, 5, 4, 3, 2, 1],
-            speed: 260.0,
-            scale: 2.0,
-        }
-    }
-}
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(SchemaRead, SchemaWrite, Debug, Clone, Copy, PartialEq, Eq)]
@@ -229,9 +63,12 @@ enum PokemonKind {
     Latios,
     Latias,
     Articuno,
+    Zapdos,
+    Moltres,
 }
 
-const SERVER_ADDR: &str = "127.0.0.1:7777";
+static DEFAULT_ADDR: &str = "127.0.0.1:7777";
+static SERVER_ADDR: OnceLock<String> = OnceLock::new();
 const ROOM_ID: &str = "test-room";
 
 /// Player state that can be broadcast over the network.
@@ -810,7 +647,11 @@ fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &GameSt
         .map(|id| id.to_string())
         .unwrap_or_else(|| "<offline>".to_string());
     draw_text(
-        &format!("Network: ID: {} Addr: '{}'", id_text, SERVER_ADDR),
+        &format!(
+            "Network: ID: {} Addr: '{}'",
+            id_text,
+            SERVER_ADDR.get().unwrap_or(&DEFAULT_ADDR.to_string())
+        ),
         debug_panel_x + 10.0,
         y,
         fs,
@@ -1028,14 +869,15 @@ async fn network_loop(
     mut state_rx: mpsc::UnboundedReceiver<PlayerState>, // from game thread: our state
     net_tx: mpsc::UnboundedSender<NetEvent>,            // to game thread: remote events
 ) {
-    let mut client = match Client::connect(SERVER_ADDR).await {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = net_tx.send(NetEvent::Error(format!("connect failed: {e}")));
-            let _ = net_tx.send(NetEvent::Disconnected);
-            return;
-        }
-    };
+    let mut client =
+        match Client::connect(SERVER_ADDR.get().unwrap_or(&DEFAULT_ADDR.to_string())).await {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = net_tx.send(NetEvent::Error(format!("connect failed: {e}")));
+                let _ = net_tx.send(NetEvent::Disconnected);
+                return;
+            }
+        };
 
     // Send known payload, verify byte-by-byte response matches exactly.
     // This catches corrupted connections early.
@@ -1184,37 +1026,47 @@ async fn network_loop(
 
 #[macroquad::main(window_conf)]
 async fn main() -> anyhow::Result<()> {
-    // TODO: Use clap here and parse args properly
-    let mode = env::args().nth(1).unwrap_or_else(|| {
-        eprintln!("Usage: exe <online/offline>");
-        std::process::exit(1);
-    });
+    // TODO: This does not work as I intended to
+    let init = ASYNC_RUNTIME.block_on(init());
+    let (mode, pokemon_select) = match init {
+        Ok(res) => res,
+        Err(e) => {
+            cliclack::log::error(format!("Initialization error: {e}"))?;
+            std::process::exit(1);
+        }
+    };
     let pokedex = Pokedex::load();
-    let _rng = ::rand::rng();
+    let mut rng = ::rand::rng();
+
+    let rand_x = rng.random_range(-100.0..100.0);
+    let rand_y = rng.random_range(-100.0..100.0);
 
     let local_player = Player::new(
-        vec2(screen_width() / 2.0, screen_height() / 2.0),
-        PokemonKind::Latias,
+        vec2(
+            screen_width() / 2.0 + rand_x,
+            screen_height() / 2.0 + rand_y,
+        ),
+        pokemon_select,
     );
 
     // Use block_on BEFORE entering macroquad's game loop
     // Macroquad doesn't support async/await inside its main loop
-    let mut game_state = match mode.as_str() {
-        "online" => {
+    let mut game_state = match mode {
+        true => {
             // Run async network init in blocking way BEFORE macroquad starts
             let online_state = ASYNC_RUNTIME.block_on(GameState::online(local_player));
             match online_state {
                 Ok(state) => state,
                 Err(err) => {
-                    eprintln!("Failed to initialize online mode: {err}");
+                    cliclack::log::error(format!("Failed to init async game runtime: {err}"))?;
                     std::process::exit(1);
                 }
             }
         }
-        "offline" => GameState::offline(local_player),
-        _ => GameState::offline(local_player),
+        false => GameState::offline(local_player),
     };
 
+    set_default_filter_mode(FilterMode::Nearest);
     loop {
         let dt = get_frame_time();
 
@@ -1239,9 +1091,47 @@ fn window_conf() -> Conf {
         window_height: 768,
         window_resizable: true,
         fullscreen: false,
-        sample_count: 2048,
+        sample_count: 4096,
         ..Default::default()
     }
+}
+
+async fn init() -> anyhow::Result<(bool, PokemonKind)> {
+    use cliclack::*;
+
+    let mode = select("Select mode")
+        .item(true, "Online", "")
+        .item(false, "Offline", "")
+        .interact()?;
+
+    let addr: String = input("Game server address?")
+        .placeholder("127.0.0.1:7777")
+        .default_input(DEFAULT_ADDR)
+        .required(true)
+        .validate(|input: &String| {
+            if input.is_empty() {
+                Err("Addr is required!")
+            } else {
+                Ok(())
+            }
+        })
+        .interact()?;
+
+    SERVER_ADDR
+        .set(addr)
+        .map_err(|_| anyhow::anyhow!("Failed to set server address"))?;
+
+    let pokemon_select = select("Select your Pokemon")
+        .item(PokemonKind::Lugia, "Lugia", "")
+        .item(PokemonKind::Latios, "Latios", "")
+        .item(PokemonKind::Latias, "Latios", "")
+        .item(PokemonKind::Articuno, "Articuno", "")
+        .item(PokemonKind::Zapdos, "Zapdos", "")
+        .item(PokemonKind::Moltres, "Moltres", "")
+        .initial_value(PokemonKind::Lugia)
+        .interact()?;
+
+    Ok((mode, pokemon_select))
 }
 
 static ASYNC_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
