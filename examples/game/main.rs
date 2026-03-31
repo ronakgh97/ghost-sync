@@ -19,10 +19,22 @@ struct Anim {
     frame_durations: &'static [f32],
 }
 
+impl Anim {
+    #[inline]
+    fn clip_for(def: &model::Pokemon, anim_kind: AnimKind) -> &Anim {
+        match anim_kind {
+            AnimKind::Idle => &def.idle,
+            AnimKind::Walk => &def.walk,
+            AnimKind::Attack => &def.atk,
+        }
+    }
+}
+
 #[derive(SchemaRead, SchemaWrite, Debug, Clone, Copy, PartialEq, Eq)]
 enum AnimKind {
     Idle,
     Walk,
+    Attack,
 }
 
 #[derive(SchemaRead, SchemaWrite, Clone, Copy)]
@@ -107,6 +119,8 @@ struct Player {
     frame_index: usize,
     frame_timer: f32,
     pokemon_kind: PokemonKind,
+    is_moving: bool,
+    is_attacking: bool,
 }
 
 impl Player {
@@ -119,6 +133,8 @@ impl Player {
             frame_index: 0,
             frame_timer: 0.0,
             pokemon_kind,
+            is_moving: false,
+            is_attacking: false,
         }
     }
 
@@ -147,6 +163,8 @@ impl Player {
             frame_index: state.frame_index,
             frame_timer: state.frame_timer,
             pokemon_kind: state.pokemon_kind,
+            is_moving: false,
+            is_attacking: false,
         }
     }
 
@@ -158,6 +176,8 @@ impl Player {
         self.frame_index = state.frame_index;
         self.frame_timer = state.frame_timer;
         self.pokemon_kind = state.pokemon_kind;
+        self.is_moving = false;
+        self.is_attacking = false;
     }
 }
 
@@ -347,48 +367,60 @@ fn read_axis_input() -> (i8, i8) {
 #[inline]
 fn update_player(player: &mut Player, dt: f32, pokedex: &Pokedex) {
     let (axis_x, axis_y) = read_axis_input();
-    let moving = axis_x != 0 || axis_y != 0;
+    player.is_moving = axis_x != 0 || axis_y != 0;
 
     let def = pokedex.get(player.pokemon_kind);
 
-    // Move in facing direction
-    if moving {
-        player.facing = Facing::from_axes(axis_x, axis_y, player.facing);
-        let direction = vec2(axis_x as f32, axis_y as f32).normalize();
-        let new_pos = player.pos + direction * def.speed * dt;
-        player.pos = player.pos.lerp(new_pos, 0.95);
+    let attack_triggered = is_key_pressed(KeyCode::J) && !player.is_attacking;
+
+    if attack_triggered {
+        start_anim(player, AnimKind::Attack);
+        player.is_attacking = true;
     }
 
-    let desired_anim = if moving {
-        AnimKind::Walk
-    } else {
-        AnimKind::Idle
-    };
+    // If attacking, run one-shot attack (locks movement)
+    if player.is_attacking {
+        let clip = Anim::clip_for(def, AnimKind::Attack);
+        let finished = advance_once(player, clip.frame_durations, dt);
 
-    // Reset anim state
-    if desired_anim != player.anim_kind {
-        player.anim_kind = desired_anim;
-        player.frame_index = 0;
-        player.frame_timer = 0.0;
+        if finished {
+            player.is_attacking = false;
+            start_anim(
+                player,
+                if player.is_moving {
+                    AnimKind::Walk
+                } else {
+                    AnimKind::Idle
+                },
+            );
+        }
+    }
+    // Normal locomotion
+    else {
+        if player.is_moving {
+            player.facing = Facing::from_axes(axis_x, axis_y, player.facing);
+            let direction = vec2(axis_x as f32, axis_y as f32).normalize();
+            let new_pos = player.pos + direction * def.speed * dt;
+            player.pos = player.pos.lerp(new_pos, 0.90);
+        }
+
+        // Switch animation only on state change
+        let desired = if player.is_moving {
+            AnimKind::Walk
+        } else {
+            AnimKind::Idle
+        };
+        if desired != player.anim_kind {
+            start_anim(player, desired);
+        }
+
+        // Loop idle/walk
+        let clip = Anim::clip_for(def, player.anim_kind);
+        advance_loop(player, clip.frame_durations, dt);
     }
 
-    let clip = match player.anim_kind {
-        AnimKind::Idle => &def.idle,
-        AnimKind::Walk => &def.walk,
-    };
-
-    // Advance anim frame
-    player.frame_timer += dt;
-    while player.frame_timer >= clip.frame_durations[player.frame_index] {
-        player.frame_timer -= clip.frame_durations[player.frame_index];
-        player.frame_index = (player.frame_index + 1) % clip.frame_durations.len();
-        // Mod that
-    }
-
-    // TODO: We need better logic here? Maybe a dedicated Collision box for each
-    // Clamp at frame size
-    // let half_w = (clip.frame_w * player.pokemon.scale()) * 0.5;
-    // let half_h = (clip.frame_h * player.pokemon.scale()) * 0.5;
+    // Clamp position to screen bounds
+    let clip = Anim::clip_for(def, player.anim_kind);
     player.pos.x = player
         .pos
         .x
@@ -400,12 +432,42 @@ fn update_player(player: &mut Player, dt: f32, pokedex: &Pokedex) {
 }
 
 #[inline]
+/// Forward the animation by dt, looping back to start after the end of the clip
+fn advance_loop(player: &mut Player, durations: &[f32], dt: f32) {
+    player.frame_timer += dt;
+    while player.frame_timer >= durations[player.frame_index] {
+        player.frame_timer -= durations[player.frame_index]; // Consume the time for the current frame
+        player.frame_index = (player.frame_index + 1) % durations.len(); // Loop back to start after the end
+    }
+}
+
+#[inline]
+/// Forward the animation by dt, return true if it has reached the end of the clip (for one-shot animations like attack)
+fn advance_once(player: &mut Player, durations: &[f32], dt: f32) -> bool {
+    player.frame_timer += dt;
+    while player.frame_timer >= durations[player.frame_index] {
+        // Keep consuming time until we find the current frame
+        player.frame_timer -= durations[player.frame_index];
+        player.frame_index += 1;
+        if player.frame_index >= durations.len() {
+            // We've reached the end of the clip, return true for completion
+            return true;
+        }
+    }
+    false
+}
+
+#[inline]
+fn start_anim(player: &mut Player, kind: AnimKind) {
+    player.anim_kind = kind;
+    player.frame_index = 0;
+    player.frame_timer = 0.0;
+}
+
+#[inline]
 fn render_player(player: &Player, pokedex: &Pokedex) {
     let def = pokedex.get(player.pokemon_kind);
-    let clip = match player.anim_kind {
-        AnimKind::Idle => &def.idle,
-        AnimKind::Walk => &def.walk,
-    };
+    let clip = Anim::clip_for(def, player.anim_kind);
 
     // Get which row to render
     let row = def.facing_rows[player.facing as usize] as f32;
@@ -434,11 +496,10 @@ fn render_player(player: &Player, pokedex: &Pokedex) {
     );
 
     let label = def.name;
-    let text_dims = measure_text(label, None, 24, 1.0);
     draw_text(
         label,
-        player.pos.x - text_dims.width * 0.5,
-        player.pos.y - dest_h * 0.5 - 8.0,
+        player.pos.x - dest_w * 0.5 - 10.0,
+        player.pos.y - dest_h * 0.5 - 15.0,
         24.0,
         WHITE,
     );
@@ -472,10 +533,7 @@ fn render_world() {
 fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &GameState) {
     let (axis_x, axis_y) = read_axis_input();
     let def = pokedex.get(player.pokemon_kind);
-    let clip = match player.anim_kind {
-        AnimKind::Idle => &def.idle,
-        AnimKind::Walk => &def.walk,
-    };
+    let clip = Anim::clip_for(def, player.anim_kind);
 
     let row = def.facing_rows[player.facing as usize];
     let source = Rect::new(
@@ -535,10 +593,9 @@ fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &GameSt
 
     draw_text(
         &format!(
-            "FPS: {:>3.0}  Delta: {:.4}s ({:.2}ms)  Screen: {:.0}x{:.0}",
+            "FPS: {:>3.0}  Delta: {:.4}s Screen: {:.0}x{:.0}",
             get_fps(),
             dt,
-            dt * 1000.0,
             screen_width(),
             screen_height()
         ),
@@ -563,8 +620,13 @@ fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &GameSt
 
     draw_text(
         &format!(
-            "Input axis: ({:>2}, {:>2})  Pos: ({:>7.2}, {:>7.2})  Speed: {:.1}  Scale: {:.2}",
-            axis_x, axis_y, player.pos.x, player.pos.y, def.speed, def.scale
+            "Input axis: ({:>2}, {:>2})  Pos: ({:.1}, {:.1})  Move: {}  Atk: {}",
+            axis_x,
+            axis_y,
+            player.pos.x,
+            player.pos.y,
+            if player.is_moving { "Y" } else { "N" },
+            if player.is_attacking { "Y" } else { "N" }
         ),
         debug_panel_x + 10.0,
         y,
@@ -879,8 +941,7 @@ async fn network_loop(
             }
         };
 
-    // Send known payload, verify byte-by-byte response matches exactly.
-    // This catches corrupted connections early.
+    // Do a little Echo test
     let echo_payload = b"ghost-sync-mmo-echo-test";
     if let Err(e) = client.echo_test(echo_payload).await {
         let _ = net_tx.send(NetEvent::Error(format!("echo test send failed: {e}")));
@@ -1123,8 +1184,8 @@ async fn init() -> anyhow::Result<(bool, PokemonKind)> {
 
     let pokemon_select = select("Select your Pokemon")
         .item(PokemonKind::Lugia, "Lugia", "")
+        .item(PokemonKind::Latias, "Latias", "")
         .item(PokemonKind::Latios, "Latios", "")
-        .item(PokemonKind::Latias, "Latios", "")
         .item(PokemonKind::Articuno, "Articuno", "")
         .item(PokemonKind::Zapdos, "Zapdos", "")
         .item(PokemonKind::Moltres, "Moltres", "")
