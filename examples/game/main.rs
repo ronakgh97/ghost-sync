@@ -3,13 +3,14 @@ mod fx;
 mod model;
 
 use crate::debug::render_debug;
+use crate::fx::ParticleSystem;
 use crate::model::Pokedex;
 use ::rand::rng;
-#[allow(unused_imports)]
 use ::rand::RngExt;
 use dashmap::DashMap;
 use ghost_sync::{Client, ServerEvent, Uuid};
 use macroquad::prelude::*;
+use std::f32::consts::PI;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, OnceLock};
 use tokio::sync::mpsc;
@@ -68,13 +69,27 @@ impl Facing {
             _ => fallback,
         }
     }
+
+    #[inline]
+    fn facing_to_vec(facing: Self) -> Vec2 {
+        match facing {
+            Facing::North => vec2(0.0, -1.0),
+            Facing::NorthEast => vec2(0.707, -0.707),
+            Facing::East => vec2(1.0, 0.0),
+            Facing::SouthEast => vec2(0.707, 0.707),
+            Facing::South => vec2(0.0, 1.0),
+            Facing::SouthWest => vec2(-0.707, 0.707),
+            Facing::West => vec2(-1.0, 0.0),
+            Facing::NorthWest => vec2(-0.707, -0.707),
+        }
+    }
 }
 
 #[derive(SchemaRead, SchemaWrite, Debug, Clone, Copy, PartialEq, Eq)]
 enum PokemonKind {
     Lugia,
-    Latios,
     Latias,
+    Latios,
     Articuno,
     Zapdos,
     Moltres,
@@ -86,7 +101,6 @@ const ROOM_ID: &str = "test-room";
 
 /// Player state that can be broadcast over the network.
 /// This is a compact representation of the player's current
-#[allow(unused)]
 #[derive(SchemaRead, SchemaWrite, Clone, Copy)]
 struct PlayerState {
     x: f32,
@@ -96,6 +110,7 @@ struct PlayerState {
     frame_index: usize,
     frame_timer: f32,
     pokemon_kind: PokemonKind,
+    is_attacking: bool,
 }
 
 /// Events that go from network task TO game thread.
@@ -139,6 +154,7 @@ impl Player {
         }
     }
 
+    #[inline]
     /// Form a state of local players that can be sent over the network
     fn to_state(&self) -> PlayerState {
         PlayerState {
@@ -149,9 +165,11 @@ impl Player {
             frame_index: self.frame_index,
             frame_timer: self.frame_timer,
             pokemon_kind: self.pokemon_kind,
+            is_attacking: self.is_attacking,
         }
     }
 
+    #[inline]
     /// Get a state from the network
     /// Can be used to smooth interpolation of remote players in client side
     fn from_state(state: &PlayerState) -> Self {
@@ -169,6 +187,7 @@ impl Player {
         }
     }
 
+    #[inline]
     /// Overwrite the player state with the received state from network
     fn apply_state(&mut self, state: &PlayerState) {
         self.target_pos = vec2(state.x, state.y);
@@ -178,31 +197,36 @@ impl Player {
         self.frame_timer = state.frame_timer;
         self.pokemon_kind = state.pokemon_kind;
         self.is_moving = false;
-        self.is_attacking = false;
+        self.is_attacking = state.is_attacking;
     }
 }
 
 /// A Master state holding all game data, including local player and remote players received from network
 struct GameState {
     local_player: Player,
+    #[allow(dead_code)]
+    is_fullscreen: bool,
     remote_players: DashMap<Uuid, Player>,
     self_id: Option<Uuid>,
     state_tx: Option<mpsc::UnboundedSender<PlayerState>>,
     net_rx: Option<mpsc::UnboundedReceiver<NetEvent>>,
     tx_count: AtomicU64,
     rx_count: AtomicU64,
+    particles: ParticleSystem,
 }
 
 impl GameState {
     fn offline(local_player: Player) -> Self {
         Self {
             local_player,
+            is_fullscreen: false,
             remote_players: DashMap::new(),
             self_id: None,
             state_tx: None,
             net_rx: None,
             tx_count: AtomicU64::new(0),
             rx_count: AtomicU64::new(0),
+            particles: ParticleSystem::new(),
         }
     }
 
@@ -222,12 +246,14 @@ impl GameState {
                 Some(NetEvent::LocalJoin { client_id }) => {
                     return Ok(Self {
                         local_player,
+                        is_fullscreen: false,
                         remote_players: DashMap::new(),
                         self_id: Some(client_id),
                         state_tx: Some(state_tx),
                         net_rx: Some(net_rx),
                         tx_count: AtomicU64::new(0),
                         rx_count: AtomicU64::new(0),
+                        particles: ParticleSystem::new(),
                     });
                 }
                 Some(NetEvent::Error(msg)) => return Err(msg),
@@ -243,11 +269,19 @@ impl GameState {
     /// Update local player + network sync.
     /// Runs every frame: input -> local update -> poll network -> send state -> lerp remotes.
     fn update(&mut self, dt: f32, pokedex: &Pokedex) {
-        update_player(&mut self.local_player, dt, pokedex);
+        update_player(&mut self.local_player, dt, pokedex, &mut self.particles);
+
+        // Spawn particles for remote players if they are attacking
+        for remote in self.remote_players.iter_mut() {
+            if remote.is_attacking {
+                spawn_attack_particles(&mut self.particles, &remote, pokedex, dt);
+            }
+        }
 
         self.poll_network_events();
         self.send_local_state();
         self.lerp_remote_players(dt);
+        self.particles.update(dt);
     }
 
     #[inline]
@@ -277,6 +311,7 @@ impl GameState {
         }
     }
 
+    #[inline]
     /// Send our current state to server (if joined). Called every frame.
     fn send_local_state(&mut self) {
         if !self.has_joined() {
@@ -332,6 +367,10 @@ impl GameState {
         render_player(&self.local_player, pokedex);
     }
 
+    fn render_particles(&self) {
+        self.particles.render();
+    }
+
     fn lerp_remote_players(&mut self, dt: f32) {
         let _alpha = dt.clamp(0.0, 1.0);
         for mut remote in self.remote_players.iter_mut() {
@@ -341,6 +380,11 @@ impl GameState {
 
     fn draw_debug(&self, pokedex: &Pokedex, dt: f32) {
         render_debug(&self.local_player, dt, pokedex, self);
+
+        // let def = pokedex.get(self.local_player.pokemon_kind);
+        // let cfg = &def.particle_config;
+        // let spawn_pos = self.local_player.pos + cfg.offsets[self.local_player.facing as usize];
+        // draw_circle(spawn_pos.x, spawn_pos.y, 5.0, RED);
     }
 }
 
@@ -365,8 +409,70 @@ fn read_axis_input() -> (i8, i8) {
     (x.clamp(-1, 1), y.clamp(-1, 1))
 }
 
+/// Spawn particles for a Pokémon's attack in the direction they're facing
+fn spawn_attack_particles(
+    particles: &mut ParticleSystem,
+    player: &Player,
+    pokedex: &Pokedex,
+    dt: f32,
+) {
+    let def = pokedex.get(player.pokemon_kind);
+    let cfg = &def.particle_config;
+
+    let clip = Anim::clip_for(def, AnimKind::Attack);
+
+    // Attack delay before particles start spawning, so they sync with the animation frames.
+    // Calculated by summing frame durations up to current frame + timer.
+    {
+        let mut elapsed = 0.0;
+        for i in 0..player.frame_index {
+            elapsed += clip.frame_durations[i];
+        }
+        elapsed += player.frame_timer;
+
+        if elapsed < cfg.attack_delay {
+            return;
+        }
+    }
+
+    let dir = Facing::facing_to_vec(player.facing);
+
+    let spawn_pos = player.pos + cfg.offsets[player.facing as usize];
+
+    // Spawn rate is particles per second
+    // So we multiply by dt to get particles this frame
+    let num_particles = (cfg.spawn_rate * dt).ceil() as usize;
+
+    for _ in 0..num_particles {
+        let speed = rand::gen_range(cfg.speed_min, cfg.speed_max);
+        let lifetime = rand::gen_range(cfg.lifetime_min, cfg.lifetime_max);
+        let scale = rand::gen_range(cfg.scale_min, cfg.scale_max);
+        let shape = cfg.shapes[rng().random_range(0..cfg.shapes.len())];
+
+        let radians = (3.0 * PI) / 180.0;
+        // Add some randomness spread
+        let angle_offset = rand::gen_range(-radians, radians);
+        let angle = dir.y.atan2(dir.x) + angle_offset;
+        let vel = vec2(angle.cos(), angle.sin()) * speed;
+
+        particles.spawn(
+            spawn_pos.x,
+            spawn_pos.y,
+            vel.x,
+            vel.y,
+            lifetime,
+            cfg.r,
+            cfg.g,
+            cfg.b,
+            cfg.a,
+            scale,
+            shape,
+        );
+    }
+}
+
 #[inline]
-fn update_player(player: &mut Player, dt: f32, pokedex: &Pokedex) {
+fn update_player(player: &mut Player, dt: f32, pokedex: &Pokedex, particles: &mut ParticleSystem) {
     let (axis_x, axis_y) = read_axis_input();
     player.is_moving = axis_x != 0 || axis_y != 0;
 
@@ -381,6 +487,9 @@ fn update_player(player: &mut Player, dt: f32, pokedex: &Pokedex) {
 
     // If attacking, run one-shot attack (locks movement)
     if player.is_attacking {
+        // Spawn attack particles continuously during attack
+        spawn_attack_particles(particles, player, pokedex, dt);
+
         let clip = Anim::clip_for(def, AnimKind::Attack);
         let finished = advance_once(player, clip.frame_durations, dt);
 
@@ -433,13 +542,10 @@ fn update_player(player: &mut Player, dt: f32, pokedex: &Pokedex) {
 }
 
 #[inline]
-/// Forward the animation by dt, looping back to start after the end of the clip
-fn advance_loop(player: &mut Player, durations: &[f32], dt: f32) {
-    player.frame_timer += dt;
-    while player.frame_timer >= durations[player.frame_index] {
-        player.frame_timer -= durations[player.frame_index]; // Consume the time for the current frame
-        player.frame_index = (player.frame_index + 1) % durations.len(); // Loop back to start after the end
-    }
+fn start_anim(player: &mut Player, kind: AnimKind) {
+    player.anim_kind = kind;
+    player.frame_index = 0;
+    player.frame_timer = 0.0;
 }
 
 #[inline]
@@ -459,10 +565,13 @@ fn advance_once(player: &mut Player, durations: &[f32], dt: f32) -> bool {
 }
 
 #[inline]
-fn start_anim(player: &mut Player, kind: AnimKind) {
-    player.anim_kind = kind;
-    player.frame_index = 0;
-    player.frame_timer = 0.0;
+/// Forward the animation by dt, looping back to start after the end of the clip
+fn advance_loop(player: &mut Player, durations: &[f32], dt: f32) {
+    player.frame_timer += dt;
+    while player.frame_timer >= durations[player.frame_index] {
+        player.frame_timer -= durations[player.frame_index]; // Consume the time for the current frame
+        player.frame_index = (player.frame_index + 1) % durations.len(); // Loop back to start after the end
+    }
 }
 
 #[inline]
@@ -737,8 +846,18 @@ async fn main() -> anyhow::Result<()> {
     loop {
         let dt = get_frame_time();
 
+        // if is_key_pressed(KeyCode::F) {
+        //     game_state.is_fullscreen = !game_state.is_fullscreen;
+        //     if game_state.is_fullscreen {
+        //         set_fullscreen(true);
+        //     } else {
+        //         set_fullscreen(false);
+        //     }
+        // }
+
         render_world();
         game_state.update(dt, &pokedex);
+        game_state.render_particles();
         game_state.render_players(&pokedex);
         if is_key_down(KeyCode::Space) {
             game_state.draw_debug(&pokedex, dt);
@@ -754,7 +873,7 @@ async fn main() -> anyhow::Result<()> {
 fn window_conf() -> Conf {
     Conf {
         window_title: String::from("Ghost Sync - MMO Test"),
-        window_width: 1280,
+        window_width: 998,
         window_height: 768,
         window_resizable: true,
         fullscreen: false,
@@ -766,12 +885,12 @@ fn window_conf() -> Conf {
 async fn init() -> anyhow::Result<(bool, PokemonKind)> {
     use cliclack::*;
 
-    let mode = select("Select mode")
-        .item(true, "Online", "")
-        .item(false, "Offline", "")
+    let mode = select("Got friends?")
+        .item(true, "Online", "Yes!!")
+        .item(false, "Offline", "No?")
         .interact()?;
 
-    let addr: String = input("Game server address?")
+    let addr: String = input("Server address?")
         .placeholder("127.0.0.1:7777")
         .default_input(DEFAULT_ADDR)
         .required(true)
@@ -788,7 +907,7 @@ async fn init() -> anyhow::Result<(bool, PokemonKind)> {
         .set(addr)
         .map_err(|_| anyhow::anyhow!("Failed to set server address"))?;
 
-    let pokemon_select = select("Select your Pokemon")
+    let pokemon_select = select("Pokemon?")
         .item(PokemonKind::Lugia, "Lugia", "")
         .item(PokemonKind::Latias, "Latias", "")
         .item(PokemonKind::Latios, "Latios", "")

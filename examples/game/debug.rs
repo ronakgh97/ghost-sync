@@ -74,11 +74,12 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
 
     draw_text(
         &format!(
-            "FPS: {:>3.0}  Delta: {:.4}s Screen: {:.0}x{:.0}",
+            "FPS: {:>3.0}  Delta: {:.4}s Screen: {:.0}x{:.0} Particles: {}",
             get_fps(),
             dt,
             screen_width(),
-            screen_height()
+            screen_height(),
+            game_state.particles.particles.len(),
         ),
         debug_panel_x + 10.0,
         y,
@@ -261,6 +262,16 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
         6.0,
         2.0,
         Color::from_rgba(80, 255, 255, 255),
+    );
+    // Visualize the attack particle spawn position continuously
+    let def = pokedex.get(player.pokemon_kind);
+    let cfg = &def.particle_config;
+    let spawn_pos = player.pos + cfg.offsets[player.facing as usize];
+    draw_circle(
+        spawn_pos.x,
+        spawn_pos.y,
+        4.0,
+        Color::from_rgba(255, 80, 80, 255),
     );
     draw_line(
         player.pos.x - 8.0,
