@@ -147,7 +147,11 @@ impl Pokedex {
                     vec2(75.0, -40.0),  // East
                     vec2(55.0, -15.0),  // SouthEast
                 ],
-                effects: &[ParticleEffect::Smoke, ParticleEffect::Fire],
+                effects: &[
+                    ParticleEffect::Smoke,
+                    ParticleEffect::Scorch,
+                    ParticleEffect::Smoke,
+                ],
             },
         }
     }
@@ -249,7 +253,11 @@ impl Pokedex {
                     vec2(75.0, -40.0),  // East
                     vec2(60.0, 10.0),   // SouthEast
                 ],
-                effects: &[ParticleEffect::Spark, ParticleEffect::Smoke],
+                effects: &[
+                    ParticleEffect::Spark,
+                    ParticleEffect::Smoke,
+                    ParticleEffect::Scorch,
+                ],
             },
         }
     }
@@ -352,7 +360,11 @@ impl Pokedex {
                     vec2(75.0, -25.0),  // East
                     vec2(60.0, 10.0),   // SouthEast
                 ],
-                effects: &[ParticleEffect::Spark, ParticleEffect::Smoke],
+                effects: &[
+                    ParticleEffect::Spark,
+                    ParticleEffect::Smoke,
+                    ParticleEffect::Scorch,
+                ],
             },
         }
     }
@@ -452,7 +464,11 @@ impl Pokedex {
                     vec2(50.0, -25.0),  // East
                     vec2(40.0, 5.0),    // SouthEast
                 ],
-                effects: &[ParticleEffect::Smoke, ParticleEffect::Spark],
+                effects: &[
+                    ParticleEffect::Scorch,
+                    ParticleEffect::Flame,
+                    ParticleEffect::Smoke,
+                ],
             },
         }
     }
@@ -544,7 +560,11 @@ impl Pokedex {
                     vec2(75.0, -15.0),  // East
                     vec2(50.0, 15.0),   // SouthEast
                 ],
-                effects: &[ParticleEffect::Spark, ParticleEffect::Fire],
+                effects: &[
+                    ParticleEffect::Spark,
+                    ParticleEffect::Spark,
+                    ParticleEffect::Scorch,
+                ],
             },
         }
     }
@@ -639,7 +659,11 @@ impl Pokedex {
                     vec2(75.0, -25.0),  // East
                     vec2(55.0, 2.5),    // SouthEast
                 ],
-                effects: &[ParticleEffect::Fire, ParticleEffect::Smoke],
+                effects: &[
+                    ParticleEffect::Fire,
+                    ParticleEffect::Flame,
+                    ParticleEffect::Scorch,
+                ],
             },
         }
     }

@@ -7,8 +7,10 @@ use rand::RngExt;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ParticleEffect {
     Fire,
+    Flame,
     Smoke,
     Spark,
+    Scorch,
 }
 
 pub struct ParticleTextureSet {
@@ -34,6 +36,33 @@ impl ParticleTextureSet {
         }
     }
 
+    pub fn load_flame() -> Self {
+        let tex1 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Flame_01.png"),
+            Some(ImageFormat::Png),
+        );
+        tex1.set_filter(FilterMode::Nearest);
+        let tex2 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Flame_02.png"),
+            Some(ImageFormat::Png),
+        );
+        tex2.set_filter(FilterMode::Nearest);
+        let tex3 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Flame_03.png"),
+            Some(ImageFormat::Png),
+        );
+        tex3.set_filter(FilterMode::Nearest);
+
+        let tex4 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Flame_04.png"),
+            Some(ImageFormat::Png),
+        );
+        tex4.set_filter(FilterMode::Nearest);
+        Self {
+            textures: vec![tex1, tex2, tex3, tex4],
+        }
+    }
+
     pub fn load_smoke() -> Self {
         let tex1 = Texture2D::from_file_with_format(
             include_bytes!("../../assets/sprites/Particles/Smoke_01.png"),
@@ -47,8 +76,13 @@ impl ParticleTextureSet {
         );
         tex2.set_filter(FilterMode::Nearest);
 
+        let tex3 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Smoke_03.png"),
+            Some(ImageFormat::Png),
+        );
+        tex3.set_filter(FilterMode::Nearest);
         Self {
-            textures: vec![tex1, tex2],
+            textures: vec![tex1, tex2, tex3],
         }
     }
 
@@ -65,32 +99,65 @@ impl ParticleTextureSet {
         );
         tex2.set_filter(FilterMode::Nearest);
 
+        let tex3 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Spark_03.png"),
+            Some(ImageFormat::Png),
+        );
+        tex3.set_filter(FilterMode::Nearest);
         Self {
-            textures: vec![tex1, tex2],
+            textures: vec![tex1, tex2, tex3],
+        }
+    }
+
+    pub fn load_scorch() -> Self {
+        let tex1 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Scorch_01.png"),
+            Some(ImageFormat::Png),
+        );
+        tex1.set_filter(FilterMode::Nearest);
+        let tex2 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Scorch_02.png"),
+            Some(ImageFormat::Png),
+        );
+        tex2.set_filter(FilterMode::Nearest);
+        let tex3 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Scorch_03.png"),
+            Some(ImageFormat::Png),
+        );
+        tex3.set_filter(FilterMode::Nearest);
+
+        Self {
+            textures: vec![tex1, tex2, tex3],
         }
     }
 }
 
 pub struct ParticleEffectTextures {
     pub fire: ParticleTextureSet,
+    pub flame: ParticleTextureSet,
     pub smoke: ParticleTextureSet,
     pub spark: ParticleTextureSet,
+    pub scorer: ParticleTextureSet,
 }
 
 impl ParticleEffectTextures {
     pub fn load() -> Self {
         Self {
             fire: ParticleTextureSet::load_fire(),
+            flame: ParticleTextureSet::load_flame(),
             smoke: ParticleTextureSet::load_smoke(),
             spark: ParticleTextureSet::load_spark(),
+            scorer: ParticleTextureSet::load_scorch(),
         }
     }
 
     pub fn get(&self, effect: ParticleEffect) -> &ParticleTextureSet {
         match effect {
             ParticleEffect::Fire => &self.fire,
+            ParticleEffect::Flame => &self.flame,
             ParticleEffect::Smoke => &self.smoke,
             ParticleEffect::Spark => &self.spark,
+            ParticleEffect::Scorch => &self.scorer,
         }
     }
 }
