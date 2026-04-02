@@ -1,17 +1,101 @@
-use ::rand::{rng, RngExt};
-use macroquad::prelude::*;
-use std::f32::consts::PI;
+use macroquad::prelude::{
+    draw_texture_ex, vec2, Color, DrawTextureParams, FilterMode, ImageFormat, Texture2D,
+};
+use rand::rng;
+use rand::RngExt;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ParticleShape {
-    Circle,
-    Poly,
-    Ellipse,
-    Line,
+pub enum ParticleEffect {
+    Fire,
+    Smoke,
+    Spark,
 }
 
-#[allow(clippy::too_many_arguments)]
-#[derive(Clone, Debug)]
+pub struct ParticleTextureSet {
+    pub textures: Vec<Texture2D>,
+}
+
+impl ParticleTextureSet {
+    pub fn load_fire() -> Self {
+        let tex1 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Fire_01.png"),
+            Some(ImageFormat::Png),
+        );
+        tex1.set_filter(FilterMode::Nearest);
+
+        let tex2 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Fire_02.png"),
+            Some(ImageFormat::Png),
+        );
+        tex2.set_filter(FilterMode::Nearest);
+
+        Self {
+            textures: vec![tex1, tex2],
+        }
+    }
+
+    pub fn load_smoke() -> Self {
+        let tex1 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Smoke_01.png"),
+            Some(ImageFormat::Png),
+        );
+        tex1.set_filter(FilterMode::Nearest);
+
+        let tex2 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Smoke_02.png"),
+            Some(ImageFormat::Png),
+        );
+        tex2.set_filter(FilterMode::Nearest);
+
+        Self {
+            textures: vec![tex1, tex2],
+        }
+    }
+
+    pub fn load_spark() -> Self {
+        let tex1 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Spark_01.png"),
+            Some(ImageFormat::Png),
+        );
+        tex1.set_filter(FilterMode::Nearest);
+
+        let tex2 = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Particles/Spark_02.png"),
+            Some(ImageFormat::Png),
+        );
+        tex2.set_filter(FilterMode::Nearest);
+
+        Self {
+            textures: vec![tex1, tex2],
+        }
+    }
+}
+
+pub struct ParticleEffectTextures {
+    pub fire: ParticleTextureSet,
+    pub smoke: ParticleTextureSet,
+    pub spark: ParticleTextureSet,
+}
+
+impl ParticleEffectTextures {
+    pub fn load() -> Self {
+        Self {
+            fire: ParticleTextureSet::load_fire(),
+            smoke: ParticleTextureSet::load_smoke(),
+            spark: ParticleTextureSet::load_spark(),
+        }
+    }
+
+    pub fn get(&self, effect: ParticleEffect) -> &ParticleTextureSet {
+        match effect {
+            ParticleEffect::Fire => &self.fire,
+            ParticleEffect::Smoke => &self.smoke,
+            ParticleEffect::Spark => &self.spark,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Particle {
     pub x: f32,
     pub y: f32,
@@ -24,11 +108,12 @@ pub struct Particle {
     pub b: f32,
     pub a: f32,
     pub scale: f32,
-    pub shape: ParticleShape,
+    pub effect: ParticleEffect,
+    pub texture_index: usize,
 }
 
-#[allow(clippy::too_many_arguments)]
 impl Particle {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         x: f32,
         y: f32,
@@ -40,7 +125,8 @@ impl Particle {
         b: f32,
         a: f32,
         scale: f32,
-        shape: ParticleShape,
+        effect: ParticleEffect,
+        texture_index: usize,
     ) -> Self {
         Self {
             x,
@@ -54,7 +140,8 @@ impl Particle {
             b,
             a,
             scale,
-            shape,
+            effect,
+            texture_index,
         }
     }
 
@@ -89,12 +176,14 @@ impl Particle {
 
 pub struct ParticleSystem {
     pub particles: Vec<Particle>,
+    pub textures: ParticleEffectTextures,
 }
 
 impl ParticleSystem {
     pub fn new() -> Self {
         Self {
             particles: Vec::with_capacity(1024),
+            textures: ParticleEffectTextures::load(),
         }
     }
 
@@ -112,54 +201,33 @@ impl ParticleSystem {
         b: f32,
         a: f32,
         scale: f32,
-        shape: ParticleShape,
+        effect: ParticleEffect,
+        texture_index: usize,
     ) {
         self.particles.push(Particle::new(
-            x, y, vx, vy, lifetime, r, g, b, a, scale, shape,
+            x,
+            y,
+            vx,
+            vy,
+            lifetime,
+            r,
+            g,
+            b,
+            a,
+            scale,
+            effect,
+            texture_index,
         ));
-    }
-
-    #[allow(unused)]
-    #[allow(clippy::too_many_arguments)]
-    #[inline]
-    pub fn spawn_range(
-        &mut self,
-        x: f32,
-        y: f32,
-        vx_min: f32,
-        vx_max: f32,
-        vy_min: f32,
-        vy_max: f32,
-        lifetime_min: f32,
-        lifetime_max: f32,
-        scale_min: f32,
-        scale_max: f32,
-        r: f32,
-        g: f32,
-        b: f32,
-        a: f32,
-        shape: ParticleShape,
-    ) {
-        let mut rng = rng();
-
-        let vx = rng.random_range(vx_min..vx_max);
-        let vy = rng.random_range(vy_min..vy_max);
-        let lifetime = rng.random_range(lifetime_min..lifetime_max);
-        let scale = rng.random_range(scale_min..scale_max);
-
-        self.spawn(x, y, vx, vy, lifetime, r, g, b, a, scale, shape);
     }
 
     #[inline]
     pub fn update(&mut self, delta: f32) {
-        let random_bool = rng().random_bool(0.5);
+        let rand_bool = rng().random_bool(0.5);
 
-        if random_bool {
-            for p in &mut self.particles {
+        for p in &mut self.particles {
+            if rand_bool {
                 p.update(delta);
-            }
-        } else {
-            for p in &mut self.particles {
+            } else {
                 p.update_exponential(delta);
             }
         }
@@ -169,41 +237,28 @@ impl ParticleSystem {
 
     #[inline]
     pub fn render(&self) {
-        let mut rng = rng();
         for p in &self.particles {
             let alpha = p.alpha();
             if alpha <= 0.0 {
                 continue;
             }
-            let color = Color::new(p.r, p.g, p.b, p.a * alpha);
-            let radius = p.scale * 4.0;
 
-            match p.shape {
-                ParticleShape::Circle => {
-                    draw_circle(p.x, p.y, radius, color);
-                }
-                ParticleShape::Poly => {
-                    let sides: u8 = rng.random_range(6..12);
-                    let rot: f32 = rng.random_range(0.0..PI * 2.0);
-                    draw_poly(p.x, p.y, sides, radius, rot, color);
-                }
-                ParticleShape::Ellipse => {
-                    let rot: f32 = rng.random_range(0.0..PI * 2.0);
-                    draw_ellipse(p.x, p.y, radius, radius, rot, color);
-                }
-                ParticleShape::Line => {
-                    let speed = (p.vx * p.vx + p.vy * p.vy).sqrt();
-                    let length = if speed > 0.0 {
-                        (radius * 2.0).max(4.0)
-                    } else {
-                        radius
-                    };
-                    let thickness = radius * 0.4;
-                    let end_x = p.x + p.vx * (length / speed.max(0.01));
-                    let end_y = p.y + p.vy * (length / speed.max(0.01));
-                    draw_line(p.x, p.y, end_x, end_y, thickness, color);
-                }
-            }
+            // Get particle texture set
+            let texture_set = self.textures.get(p.effect);
+            // Get a particular texture variant for this particle effect
+            let texture = &texture_set.textures[p.texture_index];
+
+            let size = p.scale * 32.0;
+            draw_texture_ex(
+                texture,
+                p.x - size * 0.5,
+                p.y - size * 0.5,
+                Color::new(p.r, p.g, p.b, p.a * alpha),
+                DrawTextureParams {
+                    dest_size: Some(vec2(size, size)),
+                    ..Default::default()
+                },
+            );
         }
     }
 }

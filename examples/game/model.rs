@@ -1,4 +1,4 @@
-use crate::fx::ParticleShape;
+use crate::fx::ParticleEffect;
 use crate::{Anim, PokemonKind};
 use macroquad::prelude::*;
 
@@ -23,7 +23,7 @@ pub struct ParticleConfig {
     pub spawn_rate: f32,
     pub attack_delay: f32,
     pub offsets: [Vec2; 8],
-    pub shapes: &'static [ParticleShape],
+    pub effects: &'static [ParticleEffect],
 }
 
 pub struct Pokemon {
@@ -147,13 +147,109 @@ impl Pokedex {
                     vec2(75.0, -40.0),  // East
                     vec2(55.0, -15.0),  // SouthEast
                 ],
-                shapes: &[
-                    ParticleShape::Circle,
-                    ParticleShape::Circle,
-                    ParticleShape::Circle,
-                    ParticleShape::Ellipse,
-                    ParticleShape::Ellipse,
+                effects: &[ParticleEffect::Smoke, ParticleEffect::Fire],
+            },
+        }
+    }
+
+    pub fn load_latios() -> Pokemon {
+        let idle = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Latios/Idle-Anim.png"),
+            Some(ImageFormat::Png),
+        );
+        idle.set_filter(FilterMode::Nearest);
+
+        let walk = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Latios/Walk-Anim.png"),
+            Some(ImageFormat::Png),
+        );
+        walk.set_filter(FilterMode::Nearest);
+
+        let atk = Texture2D::from_file_with_format(
+            include_bytes!("../../assets/sprites/Latios/Shoot-Anim.png"),
+            Some(ImageFormat::Png),
+        );
+        atk.set_filter(FilterMode::Nearest);
+
+        Pokemon {
+            name: "Latios",
+            idle: Anim {
+                texture: idle,
+                frame_w: 64.0,
+                frame_h: 80.0,
+                frame_durations: &[
+                    8.0 / TICK_RATE,
+                    8.0 / TICK_RATE,
+                    8.0 / TICK_RATE,
+                    8.0 / TICK_RATE,
+                    8.0 / TICK_RATE,
+                    8.0 / TICK_RATE,
                 ],
+            },
+            walk: Anim {
+                texture: walk,
+                frame_w: 64.0,
+                frame_h: 80.0,
+                frame_durations: &[
+                    4.0 / TICK_RATE,
+                    4.0 / TICK_RATE,
+                    4.0 / TICK_RATE,
+                    4.0 / TICK_RATE,
+                    4.0 / TICK_RATE,
+                    4.0 / TICK_RATE,
+                    4.0 / TICK_RATE,
+                    4.0 / TICK_RATE,
+                    4.0 / TICK_RATE,
+                    4.0 / TICK_RATE,
+                    4.0 / TICK_RATE,
+                    4.0 / TICK_RATE,
+                ],
+            },
+            atk: Anim {
+                texture: atk,
+                frame_w: 72.0,
+                frame_h: 88.0,
+                frame_durations: &[
+                    2.0 / TICK_RATE,
+                    6.0 / TICK_RATE,
+                    1.0 / TICK_RATE,
+                    1.0 / TICK_RATE,
+                    2.0 / TICK_RATE,
+                    2.0 / TICK_RATE,
+                    2.0 / TICK_RATE,
+                    2.0 / TICK_RATE,
+                    2.0 / TICK_RATE,
+                    2.0 / TICK_RATE,
+                    2.0 / TICK_RATE,
+                ],
+            },
+            facing_rows: [0, 7, 6, 5, 4, 3, 2, 1],
+            speed: 202.0,
+            scale: 2.0,
+            particle_config: ParticleConfig {
+                r: 0.97,
+                g: 0.17,
+                b: 0.71,
+                a: 0.9,
+                speed_min: 150.0,
+                speed_max: 480.0,
+                lifetime_min: 0.2,
+                lifetime_max: 0.8,
+                scale_min: 1.2,
+                scale_max: 1.8,
+                spawn_rate: 1000.0,
+                attack_delay: 8.0 / TICK_RATE,
+                offsets: [
+                    vec2(0.0, 10.0),    // South
+                    vec2(-60.0, 10.0),  // SouthWest
+                    vec2(-75.0, -40.0), // West
+                    vec2(-60.0, -80.0), // NorthWest
+                    vec2(0.0, -75.0),   // North
+                    vec2(60.0, -80.0),  // NorthEast
+                    vec2(75.0, -40.0),  // East
+                    vec2(60.0, 10.0),   // SouthEast
+                ],
+                effects: &[ParticleEffect::Spark, ParticleEffect::Smoke],
             },
         }
     }
@@ -234,9 +330,9 @@ impl Pokedex {
             speed: 202.0,
             scale: 2.0,
             particle_config: ParticleConfig {
-                r: 0.2,
-                g: 0.8,
-                b: 0.7,
+                r: 0.97,
+                g: 0.17,
+                b: 0.71,
                 a: 0.9,
                 speed_min: 150.0,
                 speed_max: 480.0,
@@ -256,121 +352,7 @@ impl Pokedex {
                     vec2(75.0, -25.0),  // East
                     vec2(60.0, 10.0),   // SouthEast
                 ],
-                shapes: &[
-                    ParticleShape::Line,
-                    ParticleShape::Line,
-                    ParticleShape::Line,
-                    ParticleShape::Poly,
-                    ParticleShape::Poly,
-                ],
-            },
-        }
-    }
-
-    pub fn load_latios() -> Pokemon {
-        let idle = Texture2D::from_file_with_format(
-            include_bytes!("../../assets/sprites/Latios/Idle-Anim.png"),
-            Some(ImageFormat::Png),
-        );
-        idle.set_filter(FilterMode::Nearest);
-
-        let walk = Texture2D::from_file_with_format(
-            include_bytes!("../../assets/sprites/Latios/Walk-Anim.png"),
-            Some(ImageFormat::Png),
-        );
-        walk.set_filter(FilterMode::Nearest);
-
-        let atk = Texture2D::from_file_with_format(
-            include_bytes!("../../assets/sprites/Latios/Shoot-Anim.png"),
-            Some(ImageFormat::Png),
-        );
-        atk.set_filter(FilterMode::Nearest);
-
-        Pokemon {
-            name: "Latios",
-            idle: Anim {
-                texture: idle,
-                frame_w: 64.0,
-                frame_h: 80.0,
-                frame_durations: &[
-                    8.0 / TICK_RATE,
-                    8.0 / TICK_RATE,
-                    8.0 / TICK_RATE,
-                    8.0 / TICK_RATE,
-                    8.0 / TICK_RATE,
-                    8.0 / TICK_RATE,
-                ],
-            },
-            walk: Anim {
-                texture: walk,
-                frame_w: 64.0,
-                frame_h: 80.0,
-                frame_durations: &[
-                    4.0 / TICK_RATE,
-                    4.0 / TICK_RATE,
-                    4.0 / TICK_RATE,
-                    4.0 / TICK_RATE,
-                    4.0 / TICK_RATE,
-                    4.0 / TICK_RATE,
-                    4.0 / TICK_RATE,
-                    4.0 / TICK_RATE,
-                    4.0 / TICK_RATE,
-                    4.0 / TICK_RATE,
-                    4.0 / TICK_RATE,
-                    4.0 / TICK_RATE,
-                ],
-            },
-            atk: Anim {
-                texture: atk,
-                frame_w: 72.0,
-                frame_h: 88.0,
-                frame_durations: &[
-                    2.0 / TICK_RATE,
-                    6.0 / TICK_RATE,
-                    1.0 / TICK_RATE,
-                    1.0 / TICK_RATE,
-                    2.0 / TICK_RATE,
-                    2.0 / TICK_RATE,
-                    2.0 / TICK_RATE,
-                    2.0 / TICK_RATE,
-                    2.0 / TICK_RATE,
-                    2.0 / TICK_RATE,
-                    2.0 / TICK_RATE,
-                ],
-            },
-            facing_rows: [0, 7, 6, 5, 4, 3, 2, 1],
-            speed: 202.0,
-            scale: 2.0,
-            particle_config: ParticleConfig {
-                r: 0.2,
-                g: 0.8,
-                b: 0.7,
-                a: 0.9,
-                speed_min: 150.0,
-                speed_max: 480.0,
-                lifetime_min: 0.2,
-                lifetime_max: 0.8,
-                scale_min: 1.2,
-                scale_max: 1.8,
-                spawn_rate: 1000.0,
-                attack_delay: 8.0 / TICK_RATE,
-                offsets: [
-                    vec2(0.0, 10.0),    // South
-                    vec2(-60.0, 10.0),  // SouthWest
-                    vec2(-75.0, -40.0), // West
-                    vec2(-60.0, -80.0), // NorthWest
-                    vec2(0.0, -75.0),   // North
-                    vec2(60.0, -80.0),  // NorthEast
-                    vec2(75.0, -40.0),  // East
-                    vec2(60.0, 10.0),   // SouthEast
-                ],
-                shapes: &[
-                    ParticleShape::Line,
-                    ParticleShape::Line,
-                    ParticleShape::Line,
-                    ParticleShape::Poly,
-                    ParticleShape::Poly,
-                ],
+                effects: &[ParticleEffect::Spark, ParticleEffect::Smoke],
             },
         }
     }
@@ -470,13 +452,7 @@ impl Pokedex {
                     vec2(50.0, -25.0),  // East
                     vec2(40.0, 5.0),    // SouthEast
                 ],
-                shapes: &[
-                    ParticleShape::Line,
-                    ParticleShape::Line,
-                    ParticleShape::Line,
-                    ParticleShape::Poly,
-                    ParticleShape::Poly,
-                ],
+                effects: &[ParticleEffect::Smoke, ParticleEffect::Spark],
             },
         }
     }
@@ -559,7 +535,6 @@ impl Pokedex {
                 spawn_rate: 1600.0,
                 attack_delay: 12.0 / TICK_RATE,
                 offsets: [
-                    // TODO: Need Tuning here
                     vec2(0.0, 20.0),    // South
                     vec2(-50.0, 15.0),  // SouthWest
                     vec2(-75.0, -15.0), // West
@@ -569,13 +544,7 @@ impl Pokedex {
                     vec2(75.0, -15.0),  // East
                     vec2(50.0, 15.0),   // SouthEast
                 ],
-                shapes: &[
-                    ParticleShape::Line,
-                    ParticleShape::Line,
-                    ParticleShape::Line,
-                    ParticleShape::Line,
-                    ParticleShape::Circle,
-                ],
+                effects: &[ParticleEffect::Spark, ParticleEffect::Fire],
             },
         }
     }
@@ -661,7 +630,6 @@ impl Pokedex {
                 spawn_rate: 2500.0,
                 attack_delay: 12.0 / TICK_RATE,
                 offsets: [
-                    // TODO: Need more Tuning here
                     vec2(0.0, 10.0),    // South
                     vec2(-55.0, 2.5),   // SouthWest
                     vec2(-75.0, -25.0), // West
@@ -671,13 +639,7 @@ impl Pokedex {
                     vec2(75.0, -25.0),  // East
                     vec2(55.0, 2.5),    // SouthEast
                 ],
-                shapes: &[
-                    ParticleShape::Circle,
-                    ParticleShape::Ellipse,
-                    ParticleShape::Ellipse,
-                    ParticleShape::Poly,
-                    ParticleShape::Poly,
-                ],
+                effects: &[ParticleEffect::Fire, ParticleEffect::Smoke],
             },
         }
     }

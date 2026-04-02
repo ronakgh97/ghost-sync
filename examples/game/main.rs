@@ -409,6 +409,7 @@ fn read_axis_input() -> (i8, i8) {
     (x.clamp(-1, 1), y.clamp(-1, 1))
 }
 
+#[inline]
 /// Spawn particles for a Pokémon's attack in the direction they're facing
 fn spawn_attack_particles(
     particles: &mut ParticleSystem,
@@ -443,31 +444,36 @@ fn spawn_attack_particles(
     // So we multiply by dt to get particles this frame
     let num_particles = (cfg.spawn_rate * dt).ceil() as usize;
 
-    for _ in 0..num_particles {
-        let speed = rand::gen_range(cfg.speed_min, cfg.speed_max);
-        let lifetime = rand::gen_range(cfg.lifetime_min, cfg.lifetime_max);
-        let scale = rand::gen_range(cfg.scale_min, cfg.scale_max);
-        let shape = cfg.shapes[rng().random_range(0..cfg.shapes.len())];
+    // Iterate all effects and spawn particles for each
+    for effect in cfg.effects {
+        for _ in 0..num_particles {
+            let speed = rand::gen_range(cfg.speed_min, cfg.speed_max);
+            let lifetime = rand::gen_range(cfg.lifetime_min, cfg.lifetime_max);
+            let scale = rand::gen_range(cfg.scale_min, cfg.scale_max);
+            let texture_index = rng().random_range(0..2);
 
-        let radians = (3.0 * PI) / 180.0;
-        // Add some randomness spread
-        let angle_offset = rand::gen_range(-radians, radians);
-        let angle = dir.y.atan2(dir.x) + angle_offset;
-        let vel = vec2(angle.cos(), angle.sin()) * speed;
+            // TODO: Use this for spread
+            let radians = (3.0 * PI) / 180.0;
+            // Add some randomness spread
+            let angle_offset = rand::gen_range(-radians, radians);
+            let angle = dir.y.atan2(dir.x) + angle_offset;
+            let vel = vec2(angle.cos(), angle.sin()) * speed;
 
-        particles.spawn(
-            spawn_pos.x,
-            spawn_pos.y,
-            vel.x,
-            vel.y,
-            lifetime,
-            cfg.r,
-            cfg.g,
-            cfg.b,
-            cfg.a,
-            scale,
-            shape,
-        );
+            particles.spawn(
+                spawn_pos.x,
+                spawn_pos.y,
+                vel.x,
+                vel.y,
+                lifetime,
+                cfg.r,
+                cfg.g,
+                cfg.b,
+                cfg.a,
+                scale,
+                *effect,
+                texture_index,
+            );
+        }
     }
 }
 

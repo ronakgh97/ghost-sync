@@ -203,6 +203,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
     );
     y += lh;
 
+    // TODO: Fix this
     if TIMER.read().unwrap().elapsed().as_secs_f64() >= 1.0 {
         MSG_SENT.store(
             game_state.tx_count.swap(0, Ordering::Relaxed),
