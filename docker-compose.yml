@@ -1,0 +1,48 @@
+services:
+  ghost-sync:
+    image: ronakgh97/ghost-sync-daemon:latest
+
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+
+    container_name: ghost-sync-daemon
+    restart: unless-stopped
+    ports:
+      - "${GAME_PORT:-7777}:7777"
+      - "${API_PORT:-7878}:7878"
+
+    environment:
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+
+    command:
+      - /app/gs-daemon
+      - run
+      - --game-addr
+      - "${GAME_ADDR:-0.0.0.0:7777}"
+      - --api-addr
+      - "${API_ADDR:-0.0.0.0:7878}"
+      # Maximum simultaneous connected clients (default: 1024)
+      - --max-client
+      - "${MAX_CLIENT:-1024}"
+      # Per-client write-channel size in bytes (default: 256 MB = 268435456)
+      - --channel-capacity
+      - "${CHANNEL_CAPACITY:-268435456}"
+
+    stop_signal: SIGTERM
+    stop_grace_period: 15s
+
+    healthcheck:
+      test: ["CMD", "test", "-f", "/app/gs-daemon"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 512M
+        reservations:
+          memory: 128M
