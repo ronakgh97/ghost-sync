@@ -73,7 +73,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
     y += lh;
 
     draw_text(
-        &format!(
+        format!(
             "FPS: {:>3.0}  Delta: {:.4}s Screen: {:.0}x{:.0} Particles: {}",
             get_fps(),
             dt,
@@ -89,7 +89,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
     y += lh;
 
     draw_text(
-        &format!(
+        format!(
             "Pokemon: {:<8}  Anim: {:?}  Facing_idx: {}  Mapped_row: {}",
             pokemon.name, player.anim_kind, player.facing as usize, row
         ),
@@ -101,7 +101,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
     y += lh;
 
     draw_text(
-        &format!(
+        format!(
             "Input axis: ({:>2}, {:>2})  Pos: ({:.1}, {:.1})  Move: {}  Atk: {}",
             axis_x,
             axis_y,
@@ -118,7 +118,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
     y += lh;
 
     draw_text(
-        &format!(
+        format!(
             "Texture: {:.0}x{:.0}  Frame: {:.0}x{:.0}  Grid: cols={} rows={}",
             tex_w, tex_h, clip.frame_w, clip.frame_h, cols, rows
         ),
@@ -130,7 +130,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
     y += lh;
 
     draw_text(
-        &format!(
+        format!(
             "Frame_index: {} / {}  Frame_timer: {:.3} / {:.3}",
             player.frame_index,
             clip.frame_durations.len().saturating_sub(1),
@@ -148,7 +148,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
     y += lh;
 
     draw_text(
-        &format!(
+        format!(
             "Source Rect: x={:.1} y={:.1} w={:.1} h={:.1}",
             source.x, source.y, source.w, source.h
         ),
@@ -164,7 +164,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
     let u1 = (source.x + source.w) / tex_w.max(1.0);
     let v1 = (source.y + source.h) / tex_h.max(1.0);
     draw_text(
-        &format!("UV Rect: ({:.3}, {:.3}) -> ({:.3}, {:.3})", u0, v0, u1, v1),
+        format!("UV Rect: ({:.3}, {:.3}) -> ({:.3}, {:.3})", u0, v0, u1, v1),
         debug_panel_x + 10.0,
         y,
         fs,
@@ -175,7 +175,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
     let valid = source_in_bounds && row_in_bounds && frame_in_bounds && frame_timer_in_bounds;
     let status_color = if valid { GREEN } else { RED };
     draw_text(
-        &format!(
+        format!(
             "Sprites bounds: Src: {}  Row: {} Frame: {}  Timer: {}",
             source_in_bounds, row_in_bounds, frame_in_bounds, frame_timer_in_bounds
         ),
@@ -191,7 +191,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
         .map(|id| id.to_string())
         .unwrap_or_else(|| "<offline>".to_string());
     draw_text(
-        &format!(
+        format!(
             "Network: ID: {} Addr: '{}'",
             id_text,
             SERVER_ADDR.get().unwrap_or(&DEFAULT_ADDR.to_string())
@@ -217,7 +217,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
     }
 
     draw_text(
-        &format!(
+        format!(
             "Remote Clients: '{}' TX: {}/s  RX: {}/s",
             game_state.remote_players.len(),
             MSG_SENT.load(Ordering::Relaxed),
@@ -237,7 +237,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
         .collect::<Vec<_>>()
         .join("  ");
     draw_text(
-        &format!("Facing row map -> {rows_str}"),
+        format!("Facing row map -> {rows_str}"),
         debug_panel_x + 10.0,
         debug_panel_y + debug_panel_h - 10.0,
         16.0,
@@ -412,7 +412,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
         draw_rectangle(cx, bar_y, w.max(1.0), bar_h, color);
         draw_rectangle_lines(cx, bar_y, w.max(1.0), bar_h, 1.0, BLACK);
 
-        draw_text(&format!("{}", i), cx + 2.0, bar_y + 13.0, 14.0, BLACK);
+        draw_text(format!("{}", i), cx + 2.0, bar_y + 13.0, 14.0, BLACK);
 
         cx += w;
     }
@@ -420,7 +420,7 @@ pub fn render_debug(player: &Player, dt: f32, pokedex: &Pokedex, game_state: &Ga
     if let Some(&cur) = clip.frame_durations.get(player.frame_index) {
         let prog = (player.frame_timer / cur.max(0.0001)).clamp(0.0, 1.0);
         draw_text(
-            &format!("Frame progress: {:>5.1}%", prog * 100.0),
+            format!("Frame progress: {:>5.1}%", prog * 100.0),
             timeline_x + 10.0,
             timeline_y + 70.0,
             18.0,

@@ -241,7 +241,7 @@ async fn main() {
         }
 
         draw_text(
-            &format!("Bots: {connected}/{BOT_COUNT}"),
+            format!("Bots: {connected}/{BOT_COUNT}"),
             10.0,
             y,
             20.0,
@@ -250,7 +250,7 @@ async fn main() {
         y += step;
 
         draw_text(
-            &format!("FPS: {:.0}", 1.0 / delta.max(0.001)),
+            format!("FPS: {:.0}", 1.0 / delta.max(0.001)),
             10.0,
             y,
             20.0,
@@ -258,12 +258,12 @@ async fn main() {
         );
         y += step;
 
-        draw_text(&format!("Tick: ~{} Hz", TICK_RATE), 10.0, y, 20.0, WHITE);
+        draw_text(format!("Tick: ~{} Hz", TICK_RATE), 10.0, y, 20.0, WHITE);
         y += step;
 
         // TX
         draw_text(
-            &format!("TX: {} msg/s  {} KB/s", msg_sent, bytes_sent / 1024),
+            format!("TX: {} msg/s  {} KB/s", msg_sent, bytes_sent / 1024),
             10.0,
             y,
             20.0,
@@ -273,7 +273,7 @@ async fn main() {
 
         // RX
         draw_text(
-            &format!("RX: {} msg/s  {} KB/s", msg_recv, bytes_recv / 1024),
+            format!("RX: {} msg/s  {} KB/s", msg_recv, bytes_recv / 1024),
             10.0,
             y,
             20.0,
@@ -285,7 +285,7 @@ async fn main() {
         let expected_msg_recv = msg_sent.saturating_mul(recipients);
         let expected_bytes_recv = bytes_sent.saturating_mul(recipients);
 
-        let msg_loss_pct = if expected_msg_recv > 0 {
+        let msg_loss_pct = if let Some(expected_msg_recv) = expected_msg_recv.checked_div(0) {
             expected_msg_recv
                 .saturating_sub(msg_recv)
                 .saturating_mul(100)
@@ -295,7 +295,7 @@ async fn main() {
         };
 
         draw_text(
-            &format!("Msg Loss: {}%", msg_loss_pct),
+            format!("Msg Loss: {}%", msg_loss_pct),
             10.0,
             y,
             20.0,
@@ -304,7 +304,7 @@ async fn main() {
 
         y += step;
 
-        let byte_loss_pct = if expected_bytes_recv > 0 {
+        let byte_loss_pct = if let Some(expected_bytes_recv) = expected_bytes_recv.checked_div(0) {
             expected_bytes_recv
                 .saturating_sub(bytes_recv)
                 .saturating_mul(100)
@@ -314,7 +314,7 @@ async fn main() {
         };
 
         draw_text(
-            &format!("Byte Loss: {}%", byte_loss_pct),
+            format!("Byte Loss: {}%", byte_loss_pct),
             10.0,
             y,
             20.0,
@@ -325,7 +325,7 @@ async fn main() {
 
         // Serialize fails
         draw_text(
-            &format!("Serialize fails: {serialize_fail}/s"),
+            format!("Serialize fails: {serialize_fail}/s"),
             10.0,
             y,
             20.0,
@@ -336,7 +336,7 @@ async fn main() {
 
         // Deserialize fails
         draw_text(
-            &format!("Deserialize fails: {deserialize_fail}/s"),
+            format!("Deserialize fails: {deserialize_fail}/s"),
             10.0,
             y,
             20.0,

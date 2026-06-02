@@ -51,7 +51,7 @@ but the main point is effortlessly broadcasting with high tick rate and low-memo
 
 Checkout: [Examples](examples) for usage cases and [Docs](docs.md) for right way to use this library
 
-Usage (I don't like release cycles and versioning, so just use local)
+**Usage** (I don't like release cycles and versioning, so just use local)
 
 ```toml
 [dependencies]

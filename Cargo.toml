@@ -9,6 +9,10 @@ repository = "https:/github.com/ronakgh97/ghost-sync"
 homepage = "https:/github.com/ronakgh97/ghost-sync"
 documentation = "https:/github.com/ronakgh97/ghost-sync/master/README.md"
 
+[lib]
+name = "ghost_sync"
+path = "src/lib.rs"
+
 [[example]]
 name = "gs-daemon"
 path = "examples/daemon.rs"
@@ -18,9 +22,9 @@ name = "gs-client"
 path = "examples/daemon_client.rs"
 
 [profile.release]
-opt-level = "z"
+opt-level = 2
 lto = "fat"
-codegen-units = 1
+codegen-units = 12
 panic = "abort"
 strip = true
 incremental = false
@@ -32,19 +36,19 @@ debug = true
 incremental = true
 
 [dependencies]
-tokio = { version = "1.50.0", features = ["full"] }
+tokio = { version = "1.52.3", features = ["full"] }
 dashmap = "7.0.0-rc2"
 anyhow = "1.0.102"
-wincode = { version = "0.5.0", features = ["derive", "uuid"] }
-uuid = { version = "1.22.0", features = ["v4", "serde"] }
+wincode = { version = "0.5.5", features = ["derive", "uuid"] }
+uuid = { version = "1.23.2", features = ["v4", "serde"] }
 bytes = "1.11.1"
 colored = "3.1.1"
 dotenv = "0.15.0"
 chrono = "0.4.44"
 
 [dev-dependencies]
-tokio = { version = "1.50.0", features = ["test-util"] }
-macroquad = "0.4.14"
-rand = "0.10.0"
-clap = { version = "4.6.0", features = ["derive"] }
-cliclack = "0.5.2"
+tokio = { version = "1.52.3", features = ["test-util"] }
+macroquad = "0.4.15"
+rand = "0.10.1"
+clap = { version = "4.6.1", features = ["derive"] }
+cliclack = "0.5.4"
