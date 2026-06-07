@@ -1,3 +1,5 @@
+> lib needs heavy refactor!!!
+
 ### Quick rant/yap
 
 [![Groudon](https://img.pokemondb.net/sprites/black-white/anim/normal/groudon.gif)](https://pokemondb.net/pokedex/groudon)
@@ -80,14 +82,13 @@ Resources
 
 TODO
 
-- Better lib design, currently its just a mess of functions and structs, need to refactor it into a more usable and
+- Better lib design, currently it's just a mess of functions and structs, need to refactor it into a more usable and
 - intuitive API
 - Add more examples, maybe a mini-game?
 - Experimental UDP support, maybe using QUIC?
 - Add tuned buffering and improve performance by lessen serialization and deserialization, where possible (Zero-copy,
   etc.)
 - Fixed the DAMN BACKPRESSURE, CHANNEL GETS FULL AND THEN EVERYTHING BLOWS UP
-- Somehow increase TCP write throughput, the only bottleneck right now is TCP write, which is fucking I/O bound!!
 - Hooks for authoritative server, so that users can implement their own game logic and state management, and use this
   library for
   networking only
